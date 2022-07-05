@@ -2,13 +2,13 @@
 #
 # Get latest from https://github.com/github/gitignore/blob/master/Unity.gitignore
 #
-/Marching-Cubes-V2/[Ll]ibrary/
-/Marching-Cubes-V2/[Tt]emp/
-/Marching-Cubes-V2/[Oo]bj/
-/Marching-Cubes-V2/[Bb]uild/
-/Marching-Cubes-V2/[Bb]uilds/
-/Marching-Cubes-V2/[Ll]ogs/
-/Marching-Cubes-V2/[Mm]emoryCaptures/
+/Marching Cubes/[Ll]ibrary/
+/Marching Cubes/[Tt]emp/
+/Marching Cubes/[Oo]bj/
+/Marching Cubes/[Bb]uild/
+/Marching Cubes/[Bb]uilds/
+/Marching Cubes/[Ll]ogs/
+/Marching Cubes/[Mm]emoryCaptures/
 
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
