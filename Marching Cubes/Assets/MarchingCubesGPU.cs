@@ -2,93 +2,135 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class MarchingCubes : MonoBehaviour
+public class MarchingCubesGPU : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;
+    [SerializeField] ComputeShader computeShader;
+    [SerializeField] ComputeShader slicer;
     int[][] triangleTable;
     int Dimensions = 32;
-    Voxel[,,] voxels;
 
-    // represents a single cube unit of a block
-    struct Voxel {
-        public Voxel(int VCase) {
-            VertexCase = VCase;
-        }
-        public int VertexCase { get; }
+    public RenderTexture renderTexture;
+    Texture3D voxelTexture;
+
+    public struct Block {
+        public int[] voxels;
     }
-
-    // the 8 template corners of a basic cube. We add these to a coordinate to get all 8 corners of a cube at that coordinate.
-    Vector3 V0 = new Vector3(1, 1, 0);
-    Vector3 V1 = new Vector3(1, 0, 0);
-    Vector3 V2 = new Vector3(0, 0, 0);
-    Vector3 V3 = new Vector3(0, 1, 0);
-    Vector3 V4 = new Vector3(1, 1, 1);
-    Vector3 V5 = new Vector3(1, 0, 1);
-    Vector3 V6 = new Vector3(0, 0, 1);
-    Vector3 V7 = new Vector3(0, 1, 1);
 
     // Start is called before the first frame update
     void Start()
     {
-        voxels = new Voxel[Dimensions, Dimensions, Dimensions];
         LoadTable();
-        EvaluateFunction();
-        BuildBigBlock();
-    }
 
-    float SampleSlope(Vector3 coord) {
-        // float output = 2 * Mathf.Sin(coord.x) + 2 * Mathf.Sin(coord.y) + 1;
-        float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
-    }
+        // set renderTexture attributes
+        renderTexture = new RenderTexture(Dimensions, Dimensions, 0, RenderTextureFormat.ARGB32);
+        // renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
+        renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
+        renderTexture.volumeDepth = 32;
+        renderTexture.enableRandomWrite = true;
+        renderTexture.wrapMode = TextureWrapMode.Clamp;
+        renderTexture.Create();
 
-    // evaluate the function for each voxel in our block
-    void EvaluateFunction() {
+        Graphics.SetRandomWriteTarget(0, renderTexture);
+
+        // Dispatch shader
+        computeShader.SetTexture(0, "voxels", renderTexture);
+        computeShader.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8s represent the thread group sizes of the shader
+
+        // CONVERT that texture into a readable one //
+
+        // renderTexture.ReadPixels()
+
+        voxelTexture = new Texture3D(32, 32, 32, TextureFormat.ARGB32, 0);      // final texture 3D
+        RenderTexture[] rtSlices = new RenderTexture[Dimensions];               // 3D render texture is split into this array of 2D render textures
+        Texture2D[] slices = new Texture2D[Dimensions];                         // above 2D render textures are converted into 3D render textures
+
+       // turn big 3D RenderTexture into an array of 2D RenderTexture slices
         for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
+            rtSlices[i] = Copy3DSliceToRenderTexture(renderTexture, i);
+        }
 
-                    EvaluateVoxel(i, j, k);
+        // convert those 2D RenderTexture slices into Texture2D slices
+        for (int i = 0; i < Dimensions; i++) {
+            slices[i] = ConvertFromRenderTexture(rtSlices[i]);
+        }
+
+        // transfer pixels from the 3D texture into outputPixels
+        var outputPixels = voxelTexture.GetPixels();
+
+        // I don't understand how this works
+        for (int k = 0; k < Dimensions; k++) {
+            var layerPixels = slices[k].GetPixels();
+            
+            for (int i = 0; i < Dimensions; i++) {
+                for (int j = 0; j < Dimensions; j++) {
+                    outputPixels[i + j * Dimensions + k * Dimensions * Dimensions] = layerPixels[i + j * Dimensions];
                 }
             }
         }
-    }
 
-    // fills our array of voxels with case values based on the slope
-    void EvaluateVoxel(int x, int y, int z) {
-        Vector3 coordinate = new Vector3(x, y, z);
+        // apply the output pixels to the 3D texture
+        voxelTexture.SetPixels(outputPixels);
+        voxelTexture.Apply();
 
-            // evaluate all 8 corners of the voxel against the sample function
-            int a = SampleSlope(coordinate + V0) > 0 ? 1 : 0;
-            int b = SampleSlope(coordinate + V1) > 0 ? 1 : 0;
-            int c = SampleSlope(coordinate + V2) > 0 ? 1 : 0;
-            int d = SampleSlope(coordinate + V3) > 0 ? 1 : 0;
-            int e = SampleSlope(coordinate + V4) > 0 ? 1 : 0;
-            int f = SampleSlope(coordinate + V5) > 0 ? 1 : 0;
-            int g = SampleSlope(coordinate + V6) > 0 ? 1 : 0;
-            int h = SampleSlope(coordinate + V7) > 0 ? 1 : 0;
+        // try to read the pixels (for debugging)
+        var stuff = voxelTexture.GetPixels();
+        int count = 0;
+        foreach (var thing in stuff) {
+            Debug.Log(thing);
+            if (thing.r != 0)
+            count ++;
+        }
+        Debug.Log(count);
 
-            // calculate the case number by concatenating the binary values
-            int VCase = 1 * a + 2 * b + 4 * c + 8 * d + 16 * e + 32 * f + 64 * g + 128 * h;
-
-            // set the values in the voxel struct
-            voxels[x, y, z] = new Voxel(VCase);
-    }
-
-    void BuildBigBlock() {
-
+        // create the terrain
         for (int i = 0; i < Dimensions; i++) {
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
-
-                    if (voxels[i, j, k].VertexCase != 0 && voxels[i, j, k].VertexCase != 255) {
-                        // create a cube to visualize the terrain surface
+                    
+                    int vertexCase = (int) (stuff[i*Dimensions*Dimensions + j*Dimensions + k].r * 1000);
+                    // Debug.Log(i*Dimensions*Dimensions + j*Dimensions + k);
+                    // Debug.Log(vertexCase);
+                    if (vertexCase != 0 && vertexCase != 255) {
                         var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
+                        cube.name = string.Format("{0}", vertexCase);
                     }
                 }
             }
         }
     }
+
+    RenderTexture Copy3DSliceToRenderTexture(RenderTexture source, int layer) {
+        RenderTexture render = new RenderTexture(Dimensions, Dimensions, 0);
+        render.dimension = UnityEngine.Rendering.TextureDimension.Tex2D;
+        render.enableRandomWrite = true;
+        render.wrapMode = TextureWrapMode.Clamp;
+        render.Create();
+
+        int kernelIndex = slicer.FindKernel("CSMain");
+        slicer.SetTexture(kernelIndex, "voxels", source);
+        slicer.SetInt("layer", layer);
+        slicer.SetTexture(kernelIndex, "Result", render);
+        slicer.Dispatch(kernelIndex, Dimensions, Dimensions, 1); 
+        return render;
+    }
+
+    Texture2D ConvertFromRenderTexture(RenderTexture rt) {
+        Texture2D output = new Texture2D(Dimensions, Dimensions);
+        RenderTexture.active = rt;
+        output.ReadPixels(new Rect(0, 0, Dimensions, Dimensions), 0, 0);
+        output.Apply();
+        
+        // debugging
+        int count = 0;
+        foreach (var thing in output.GetPixels()) {
+            if (thing.r != 0) count++;
+        }
+        Debug.Log(count);
+
+        return output;
+    }
+
 
     // geometry table for vertex cases. -1 means no vertex, other represent which edge to interpolate.
     void LoadTable() {

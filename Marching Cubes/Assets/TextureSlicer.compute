@@ -1,0 +1,13 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+ 
+Texture2DArray<float4> voxels;
+RWTexture2D<float4> Result;
+int layer;
+ 
+[numthreads(32,32,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint3 pos = uint3(id.x,id.y,layer);
+    Result[id.xy] = voxels[pos];
+}
