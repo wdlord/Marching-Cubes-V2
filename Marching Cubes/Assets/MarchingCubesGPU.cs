@@ -4,34 +4,54 @@ using UnityEngine;
 
 public class MarchingCubesGPU : MonoBehaviour
 {
-    [SerializeField] GameObject basicCube;
-    [SerializeField] ComputeShader computeShader;
-    [SerializeField] ComputeShader slicer;
-    int[][] triangleTable;
-    int Dimensions = 32;
-    TextureFormat texFormat = TextureFormat.RFloat;
-    RenderTextureFormat renderTexFormat = RenderTextureFormat.RFloat;
+    [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
+    [SerializeField] ComputeShader computeShader;       // the shader used to get the vertex cases.
+    [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
 
-    public RenderTexture renderTexture;
-    Texture3D voxelTexture;
+    int[][] triangleTable;                                                  // vertex case config lookups.
+    int Dimensions = 32;                                                    // size of a block (Dimensions = 32 means the block is 32x32x32).
+    TextureFormat texFormat = TextureFormat.RFloat;                         // graphics format of the textures. RFloat means Red channel only, 32 bit precision.
+    RenderTextureFormat renderTexFormat = RenderTextureFormat.RFloat;       // graphics format of the render textures. RFloat means Red channel only, 32 bit precision.
 
-    public struct Block {
-        public int[] voxels;
-    }
+    public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
+    Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
 
     // Start is called before the first frame update
     void Start()
     {
+        voxelTexture = new Texture3D(32, 32, 32, texFormat, 0);                 // will store the final voxel data
+
         LoadTable();
         EvaluateVoxels();
+        ExtractVoxelData(renderTexture, voxelTexture);
+        BuildBlock();
+    }
 
-        voxelTexture = new Texture3D(32, 32, 32, texFormat, 0);                 // final texture 3D
+
+    void EvaluateVoxels() {
+        // set renderTexture attributes
+        renderTexture = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
+        renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
+        renderTexture.volumeDepth = 32;
+        renderTexture.enableRandomWrite = true;
+        renderTexture.wrapMode = TextureWrapMode.Clamp;
+        renderTexture.Create();
+
+        Graphics.SetRandomWriteTarget(0, renderTexture);
+
+        // Dispatch shader
+        computeShader.SetTexture(0, "voxels", renderTexture);
+        computeShader.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8's represent the thread group sizes of the shader
+    }
+
+
+    void ExtractVoxelData(RenderTexture source, Texture3D voxelTexture) {
         RenderTexture[] rtSlices = new RenderTexture[Dimensions];               // 3D render texture is split into this array of 2D render textures
         Texture2D[] slices = new Texture2D[Dimensions];                         // above 2D render textures are converted into 3D render textures
 
-       // turn big 3D RenderTexture into an array of 2D RenderTexture slices
+        // turn big 3D RenderTexture into an array of 2D RenderTexture slices
         for (int i = 0; i < Dimensions; i++) {
-            rtSlices[i] = Copy3DSliceToRenderTexture(renderTexture, i);
+            rtSlices[i] = Copy3DSliceToRenderTexture(source, i);
         }
 
         // convert those 2D RenderTexture slices into Texture2D slices
@@ -56,41 +76,30 @@ public class MarchingCubesGPU : MonoBehaviour
         // apply the output pixels to the 3D texture
         voxelTexture.SetPixels(outputPixels);
         voxelTexture.Apply();
+    }
 
-        // try to read the pixels (for debugging)
-        var stuff = voxelTexture.GetPixels();
+
+    void BuildBlock() {
+        var voxelData = voxelTexture.GetPixels();
 
         // create the terrain
         for (int i = 0; i < Dimensions; i++) {
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
                     
-                    int vertexCase = (int) (stuff[i*Dimensions*Dimensions + j*Dimensions + k].r * 1000);
+                    // the data is in the r channel, and is currently a float (ie 0.255). Converts that into an int (ie 255).
+                    int vertexCase = (int) (voxelData[i*Dimensions*Dimensions + j*Dimensions + k].r * 1000);
                     
+                    // case 0 is above the curve, case 255 is below. In either case we do not draw any vertices there.
                     if (vertexCase != 0 && vertexCase != 255) {
                         var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                        cube.name = string.Format("{0}", vertexCase);
+                        cube.name = vertexCase.ToString();
                     }
                 }
             }
         }
     }
 
-    void EvaluateVoxels() {
-        // set renderTexture attributes
-        renderTexture = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
-        renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
-        renderTexture.volumeDepth = 32;
-        renderTexture.enableRandomWrite = true;
-        renderTexture.wrapMode = TextureWrapMode.Clamp;
-        renderTexture.Create();
-
-        Graphics.SetRandomWriteTarget(0, renderTexture);
-
-        // Dispatch shader
-        computeShader.SetTexture(0, "voxels", renderTexture);
-        computeShader.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8's represent the thread group sizes of the shader
-    }
 
     RenderTexture Copy3DSliceToRenderTexture(RenderTexture source, int layer) {
         RenderTexture render = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
@@ -106,6 +115,7 @@ public class MarchingCubesGPU : MonoBehaviour
         slicer.Dispatch(kernelIndex, Dimensions, Dimensions, 1); 
         return render;
     }
+
 
     Texture2D ConvertFromRenderTexture(RenderTexture rt) {
         Texture2D output = new Texture2D(rt.width, rt.height, texFormat, -1, true);
