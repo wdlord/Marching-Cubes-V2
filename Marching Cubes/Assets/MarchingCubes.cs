@@ -56,7 +56,7 @@ public class MarchingCubes : MonoBehaviour
 
     // fills our array of voxels with case values based on the slope
     void EvaluateVoxel(int x, int y, int z) {
-        Vector3 coordinate = new Vector3(x, y, z);
+        Vector3 coordinate = new Vector3(z, x, y);
 
             // evaluate all 8 corners of the voxel against the sample function
             int a = SampleSlope(coordinate + V0) > 0 ? 1 : 0;
@@ -84,6 +84,7 @@ public class MarchingCubes : MonoBehaviour
                     if (voxels[i, j, k].VertexCase != 0 && voxels[i, j, k].VertexCase != 255) {
                         // create a cube to visualize the terrain surface
                         var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
+                        cube.name = string.Format("{0}", voxels[i, j, k].VertexCase);
                     }
                 }
             }
