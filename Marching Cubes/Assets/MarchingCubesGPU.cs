@@ -9,8 +9,8 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] ComputeShader slicer;
     int[][] triangleTable;
     int Dimensions = 32;
-    TextureFormat texFormat = TextureFormat.RGBAFloat;
-    RenderTextureFormat renderTexFormat = RenderTextureFormat.ARGBFloat;
+    TextureFormat texFormat = TextureFormat.RFloat;
+    RenderTextureFormat renderTexFormat = RenderTextureFormat.RFloat;
 
     public RenderTexture renderTexture;
     Texture3D voxelTexture;
@@ -59,10 +59,6 @@ public class MarchingCubesGPU : MonoBehaviour
 
         // try to read the pixels (for debugging)
         var stuff = voxelTexture.GetPixels();
-        // var stuff = voxelTexture.GetPixelData<Color32>(0);
-        foreach (var thing in stuff) {
-            Debug.Log(thing);
-        }
 
         // create the terrain
         for (int i = 0; i < Dimensions; i++) {
@@ -70,7 +66,6 @@ public class MarchingCubesGPU : MonoBehaviour
                 for (int k = 0; k < Dimensions; k++) {
                     
                     int vertexCase = (int) (stuff[i*Dimensions*Dimensions + j*Dimensions + k].r * 1000);
-                    // Debug.Log(stuff[i*Dimensions*Dimensions + j*Dimensions + k].r);
                     
                     if (vertexCase != 0 && vertexCase != 255) {
                         var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
@@ -117,11 +112,6 @@ public class MarchingCubesGPU : MonoBehaviour
         RenderTexture.active = rt;
         output.ReadPixels(new Rect(0, 0, Dimensions, Dimensions), 0, 0);
         output.Apply();
-
-        var stuff = output.GetPixels();
-        foreach (var thing in stuff) {
-            Debug.Log(thing.r);
-        }
 
         return output;
     }

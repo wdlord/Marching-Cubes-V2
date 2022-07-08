@@ -1,6 +1,6 @@
 #pragma kernel CSMain
 
-RWTexture2DArray<float4> voxels;
+RWTexture2DArray<float> voxels;
 
 float SampleSlope(float3 coord) {
     return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
@@ -22,7 +22,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
     uint VCase = 1*a + 2*b + 4*c + 8*d + 16*e + 32*f + 64*g + 128*h;
     
-    voxels[id.xyz] = float4(float(VCase/1000.0), 0, 0, 1);
+    // voxels[id.xyz] = float4(float(VCase/1000.0), 0, 0, 1);
     // voxels[id.xyz] = float4(1.0/2.0, 0, 0, 1);
-    // voxels[id.xyz] = VCase;
+    voxels[id.xyz] = VCase/1000.0;
 }
