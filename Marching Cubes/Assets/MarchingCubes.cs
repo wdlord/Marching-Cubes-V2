@@ -2,12 +2,19 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(MeshFilter))]
 public class MarchingCubes : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;
+    [SerializeField] GameObject vertexVisSphere;
     int[][] triangleTable;
     int Dimensions = 32;
     Voxel[,,] voxels;
+
+    Vector3[] vertices;
+    int[] triangles;
+    Mesh mesh;
+    int bufferIndex;
 
     // represents a single cube unit of a block
     struct Voxel {
@@ -27,14 +34,42 @@ public class MarchingCubes : MonoBehaviour
     Vector3 V6 = new Vector3(0, 0, 1);
     Vector3 V7 = new Vector3(0, 1, 1);
 
+
     // Start is called before the first frame update
     void Start()
     {
         voxels = new Voxel[Dimensions, Dimensions, Dimensions];
         LoadTable();
+
+        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
+        triangles = new int[]{0, 1, 2};
+        mesh = new Mesh();
+        GetComponent<MeshFilter>().mesh = mesh;
+
+        // vertices = new Vector3[] {
+        //     new Vector3 (0, 0, 0), 
+        //     new Vector3 (0, 0, 1),
+        //     new Vector3 (1, 0, 0)
+        // };
+        triangles = new int[] {
+            0, 1, 2,
+            1, 3, 2,
+            2, 3, 4
+        };
+
         EvaluateFunction();
+        
+        UpdateMesh();
+
         BuildBigBlock();
+        
+        foreach (Vector3 v in vertices) {
+            if (v != Vector3.zero) {
+                Instantiate(vertexVisSphere, v, Quaternion.identity);
+            }
+        }
     }
+
 
     float SampleSlope(Vector3 coord) {
         // float output = 2 * Mathf.Sin(coord.x) + 2 * Mathf.Sin(coord.y) + 1;
@@ -42,17 +77,19 @@ public class MarchingCubes : MonoBehaviour
         return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
     }
 
+
     // evaluate the function for each voxel in our block
     void EvaluateFunction() {
         for (int i = 0; i < Dimensions; i++) {
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
 
-                    EvaluateVoxel(i, j, k);
+                    EvaluateVoxel(i, j, k);  // cube version
                 }
             }
         }
     }
+
 
     // fills our array of voxels with case values based on the slope
     void EvaluateVoxel(int x, int y, int z) {
@@ -75,6 +112,149 @@ public class MarchingCubes : MonoBehaviour
             voxels[x, y, z] = new Voxel(VCase);
     }
 
+
+
+    void InterpretCase(int x, int y, int z) {
+
+        int voxelCase = voxels[x, y, z].VertexCase;
+
+        for (int i = 0; triangleTable[voxelCase][i] != -1; i+=3) {
+            vertices[bufferIndex + 0] = MakeVertex(triangleTable[voxelCase][i + 2], x, y, z);
+            vertices[bufferIndex + 1] = MakeVertex(triangleTable[voxelCase][i + 1], x, y, z);
+            vertices[bufferIndex + 2] = MakeVertex(triangleTable[voxelCase][i + 0], x, y, z);
+        }
+
+        bufferIndex += 3;
+    }
+
+
+
+    Vector3 MakeVertex(int edge, int x, int y, int z) {
+        Vector3 output = Vector3.zero;
+        Vector3 coord = new Vector3(x, y, z);
+        float point1, point2;
+
+        // determine where to put the vertex along the edge
+        switch (edge) {
+            case 0:
+                point1 = SampleSlope(coord + V0);
+                point2 = SampleSlope(coord + V1);
+                output = Interpolate(point1, point2, coord + V0, coord + V1);
+                break;
+
+            case 1:
+                point1 = SampleSlope(coord + V1);
+                point2 = SampleSlope(coord + V2);
+                output = Interpolate(point1, point2, coord + V1, coord + V2);
+                break;
+
+            case 2:
+                point1 = SampleSlope(coord + V2);
+                point2 = SampleSlope(coord + V3);
+                output = Interpolate(point1, point2, coord + V2, coord + V3);
+                break;
+
+            case 3:
+                point1 = SampleSlope(coord + V3);
+                point2 = SampleSlope(coord + V4);
+                output = Interpolate(point1, point2, coord + V3, coord + V4);
+                break;
+
+            case 4:
+                point1 = SampleSlope(coord + V4);
+                point2 = SampleSlope(coord + V5);
+                output = Interpolate(point1, point2, coord + V4, coord + V5);
+                break;
+
+            case 5:
+                point1 = SampleSlope(coord + V5);
+                point2 = SampleSlope(coord + V6);
+                output = Interpolate(point1, point2, coord + V5, coord + V6);
+                break;
+
+            case 6:
+                point1 = SampleSlope(coord + V6);
+                point2 = SampleSlope(coord + V7);
+                output = Interpolate(point1, point2, coord + V6, coord + V7);
+                break;
+
+            case 7:
+                point1 = SampleSlope(coord + V4);
+                point2 = SampleSlope(coord + V7);
+                output = Interpolate(point1, point2, coord + V4, coord + V7);
+                break;
+
+            case 8:
+                point1 = SampleSlope(coord + V0);
+                point2 = SampleSlope(coord + V4);
+                output = Interpolate(point1, point2, coord + V0, coord + V4);
+                break;
+
+            case 9:
+                point1 = SampleSlope(coord + V1);
+                point2 = SampleSlope(coord + V5);
+                output = Interpolate(point1, point2, coord + V1, coord + V5);
+                break;
+
+            case 10:
+                point1 = SampleSlope(coord + V2);
+                point2 = SampleSlope(coord + V6);
+                output = Interpolate(point1, point2, coord + V2, coord + V6);
+                break;
+
+            case 11:
+                point1 = SampleSlope(coord + V7);
+                point2 = SampleSlope(coord + V3);
+                output = Interpolate(point1, point2, coord + V7, coord + V3);
+                break;
+        }
+
+        return output;
+    }
+
+
+
+    Vector3 Interpolate(float point1, float point2, Vector3 vertexA, Vector3 vertexB) {
+        
+        Vector3 output = Vector3.zero;
+        float fraction, interpolation, a=0, b=0;
+        int coordCase = 0;
+
+        // find which coordinates need ot be interpolated (x, y, or z coords)
+        if (vertexA.x != vertexB.x) {
+            a = vertexA.x;
+            b = vertexB.x;
+            coordCase = 1;
+        }
+        else if (vertexA.y != vertexB.y) {
+            a = vertexA.y;
+            b = vertexB.y;
+            coordCase = 2;
+        }
+        else if (vertexA.z != vertexB.y) {
+            a = vertexA.z;
+            b = vertexB.z;
+            coordCase = 3;
+        }
+
+        // the fraction represents the distance to place the vertex between a and b (ie 25% of the way between A and B)
+        float numerator = (point1 >= 0) ? point1 : point2;
+        fraction = numerator / (Mathf.Abs(point1) + Mathf.Abs(point2));
+
+        // swap variables 'a' and 'b', not doing so results in inaccuracy (ie 25% of the way between B and A instead of A and B)
+        if (point1 >= 0) interpolation = (float) (a * (1.0 - fraction)) + (b * fraction);
+        else interpolation = (float)(b * (1.0 - fraction)) + (a * fraction);
+
+        // construct the vertex using the interpolated vertex
+        if (coordCase == 1) output = new Vector3(interpolation, vertexA.y, vertexB.z);
+        if (coordCase == 2) output = new Vector3(vertexA.x, interpolation, vertexB.z);
+        if (coordCase == 3) output = new Vector3(vertexA.x, vertexA.y, interpolation);
+
+        return output;
+    }
+
+
+
     void BuildBigBlock() {
 
         for (int i = 0; i < Dimensions; i++) {
@@ -82,14 +262,25 @@ public class MarchingCubes : MonoBehaviour
                 for (int k = 0; k < Dimensions; k++) {
 
                     if (voxels[i, j, k].VertexCase != 0 && voxels[i, j, k].VertexCase != 255) {
-                        // create a cube to visualize the terrain surface
-                        var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                        cube.name = string.Format("{0}", voxels[i, j, k].VertexCase);
+                        // // create a cube to visualize the terrain surface
+                        // var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
+                        // cube.name = voxels[i, j, k].VertexCase.ToString();
+                        
+                        InterpretCase(i, j, k);
                     }
                 }
             }
         }
     }
+
+
+
+    void UpdateMesh() {
+        mesh.Clear();
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+    }
+
 
     // geometry table for vertex cases. -1 means no vertex, other represent which edge to interpolate.
     void LoadTable() {
