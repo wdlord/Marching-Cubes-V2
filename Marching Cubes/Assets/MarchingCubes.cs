@@ -13,8 +13,10 @@ public class MarchingCubes : MonoBehaviour
 
     Vector3[] vertices;
     int[] triangles;
+
     Mesh mesh;
     int bufferIndex;
+    int triangleIndex;
 
     // represents a single cube unit of a block
     struct Voxel {
@@ -42,37 +44,42 @@ public class MarchingCubes : MonoBehaviour
         LoadTable();
 
         vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
-        triangles = new int[]{0, 1, 2};
+        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
+
         mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = mesh;
 
-        // vertices = new Vector3[] {
-        //     new Vector3 (0, 0, 0), 
-        //     new Vector3 (0, 0, 1),
-        //     new Vector3 (1, 0, 0)
-        // };
-        triangles = new int[] {
-            0, 1, 2,
-            1, 3, 2,
-            2, 3, 4
-        };
-
         EvaluateFunction();
-        
-        UpdateMesh();
 
         BuildBigBlock();
         
+        UpdateMesh();
+        
+        int count = 0;
         foreach (Vector3 v in vertices) {
             if (v != Vector3.zero) {
-                Instantiate(vertexVisSphere, v, Quaternion.identity);
+                var sphere = Instantiate(vertexVisSphere, v, Quaternion.identity);
+                if (count < 3) {
+                    Color matColor = Color.black;
+                    if (count == 0) {
+                        matColor = Color.red;
+                    }
+                    if (count == 1) {
+                        matColor = Color.blue;
+                    }
+                    if (count == 2) {
+                        matColor = Color.green;
+                    }
+                    sphere.GetComponent<Renderer>().material.color = matColor;
+                    count++;
+                }
             }
         }
+        
     }
 
 
     float SampleSlope(Vector3 coord) {
-        // float output = 2 * Mathf.Sin(coord.x) + 2 * Mathf.Sin(coord.y) + 1;
         float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
         return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
     }
@@ -118,13 +125,20 @@ public class MarchingCubes : MonoBehaviour
 
         int voxelCase = voxels[x, y, z].VertexCase;
 
-        for (int i = 0; triangleTable[voxelCase][i] != -1; i+=3) {
+        // generate the vertices for a given voxel case.
+        // works through the triangle table entry which tells which order to draw the triangles in.
+        // works in groups of 3's to go one triangle at a time.
+        for (int i = 0; triangleTable[voxelCase][i] != -1; i += 3) {
             vertices[bufferIndex + 0] = MakeVertex(triangleTable[voxelCase][i + 2], x, y, z);
             vertices[bufferIndex + 1] = MakeVertex(triangleTable[voxelCase][i + 1], x, y, z);
             vertices[bufferIndex + 2] = MakeVertex(triangleTable[voxelCase][i + 0], x, y, z);
-        }
 
-        bufferIndex += 3;
+            triangles[bufferIndex + 0] = bufferIndex + 0;
+            triangles[bufferIndex + 1] = bufferIndex + 1;
+            triangles[bufferIndex + 2] = bufferIndex + 2;
+            
+            bufferIndex += 3;
+        }
     }
 
 
@@ -155,9 +169,9 @@ public class MarchingCubes : MonoBehaviour
                 break;
 
             case 3:
-                point1 = SampleSlope(coord + V3);
-                point2 = SampleSlope(coord + V4);
-                output = Interpolate(point1, point2, coord + V3, coord + V4);
+                point1 = SampleSlope(coord + V0);
+                point2 = SampleSlope(coord + V3);
+                output = Interpolate(point1, point2, coord + V0, coord + V3);
                 break;
 
             case 4:
@@ -220,7 +234,7 @@ public class MarchingCubes : MonoBehaviour
         float fraction, interpolation, a=0, b=0;
         int coordCase = 0;
 
-        // find which coordinates need ot be interpolated (x, y, or z coords)
+        // find which coordinates need to be interpolated (x, y, or z coords)
         if (vertexA.x != vertexB.x) {
             a = vertexA.x;
             b = vertexB.x;
@@ -231,7 +245,7 @@ public class MarchingCubes : MonoBehaviour
             b = vertexB.y;
             coordCase = 2;
         }
-        else if (vertexA.z != vertexB.y) {
+        else if (vertexA.z != vertexB.z) {
             a = vertexA.z;
             b = vertexB.z;
             coordCase = 3;
