@@ -2,142 +2,74 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[RequireComponent(typeof(MeshFilter))]
-public class MarchingCubes : MonoBehaviour
+public class VoxelCaseDebugger : MonoBehaviour
 {
-    [SerializeField] GameObject basicCube;
-    [SerializeField] GameObject vertexSphere;
+    [SerializeField] int voxelCase;
+    int lastCase;
 
+    [SerializeField] GameObject vertexVisSphere;
     int[][] triangleTable;
-    int Dimensions = 32;
-    Voxel[,,] voxels;
-
+    Mesh mesh;
     Vector3[] vertices;
     int[] triangles;
-    Mesh mesh;
     int bufferIndex;
 
-    // represents a single voxel unit of a block.
-    struct Voxel {
-        public Voxel(int VCase) {
-            VertexCase = VCase;
-        }
-        public int VertexCase { get; }
-    }
-
-    // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
-    Vector3[] BaseCorners = {
-        new Vector3(0, 0, 0),
-        new Vector3(0, 1, 0),
-        new Vector3(1, 1, 0),
-        new Vector3(1, 0, 0),
-        new Vector3(0, 0, 1),
-        new Vector3(0, 1, 1),
-        new Vector3(1, 1, 1),
-        new Vector3(1, 0, 1)
-    };
-
-    // Lookup table. Given a certain edge number, that index gives the vertex pair connected by that edge. For use with BaseCorners array above.
-    Vector2Int[] edgeTable = {
-        new Vector2Int(0, 1),
-        new Vector2Int(1, 2),
-        new Vector2Int(2, 3),
-        new Vector2Int(0, 3),
-        new Vector2Int(4, 5),
-        new Vector2Int(5, 6),
-        new Vector2Int(6, 7),
-        new Vector2Int(4, 7),
-        new Vector2Int(0, 4),
-        new Vector2Int(1, 5),
-        new Vector2Int(2, 6),
-        new Vector2Int(7, 3)
-    };
-
+    // the 8 template corners of a basic cube. We add these to a coordinate to get all 8 corners of a cube at that coordinate.
+    Vector3 V0 = new Vector3(0, 0, 0);
+    Vector3 V1 = new Vector3(0, 1, 0);
+    Vector3 V2 = new Vector3(1, 1, 0);
+    Vector3 V3 = new Vector3(1, 0, 0);
+    Vector3 V4 = new Vector3(0, 0, 1);
+    Vector3 V5 = new Vector3(0, 1, 1);
+    Vector3 V6 = new Vector3(1, 1, 1);
+    Vector3 V7 = new Vector3(1, 0, 1);
 
     // Start is called before the first frame update
     void Start()
     {
-        voxels = new Voxel[Dimensions, Dimensions, Dimensions];
-        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
-        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
-
         mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = mesh;
-
+        vertices = new Vector3[15];
+        triangles = new int[15];
         LoadTable();
 
-        EvaluateBlock();
+        // InterpretCase(voxelCase);
+        // UpdateMesh();
+    }
 
-        MarchBlock();
-        
-        UpdateMesh();
-        
-        foreach (Vector3 v in vertices) {
-            if (v != Vector3.zero) {
-                var sphere = Instantiate(vertexSphere, v, Quaternion.identity);
-            }
+    // Update is called once per frame
+    void Update()
+    {
+        if (lastCase != voxelCase) {
+            Reset();
+            InterpretCase(voxelCase);
+            UpdateMesh();
         }
-        
+        lastCase = voxelCase;
     }
 
-
-    // This is our simplistic density function.
-    // helper visualization tool:
-    // http://www.math3d.org/
-    float SampleSlope(Vector3 coord) {
-
-        float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+    void UpdateMesh() {
+        mesh.Clear();
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
     }
 
-
-    // Evaluate the density function for each voxel in the block to get the voxel cases.
-    // Results stored in voxels array.
-    void EvaluateBlock() {
-        for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
-
-                    EvaluateVoxel(new Vector3Int(i, j, k));
-                }
-            }
-        }
+    void Reset() {
+        vertices = new Vector3[15];
+        triangles = new int[15];
+        bufferIndex = 0;
     }
 
+    void InterpretCase(int voxelCase) {
 
-    // fills our array of voxels with case values based on the slope
-    void EvaluateVoxel(Vector3Int coord) {
-
-            int vertexCase = 0;
-
-            // Generates the vertex case by evaluating each corner of the voxel against the density function.
-            // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
-            // EXAMPLE: Let corners 0, 3, 7 be greater than 0.
-            //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
-            //      resulting case is decimal 137.
-            for (int i = 0; i < BaseCorners.Length; i++) {
-                if (SampleSlope(coord + BaseCorners[i]) > 0)
-                    vertexCase |= 1 << i;
-            }
-
-            // set the values in the voxel struct
-            voxels[coord.x, coord.y, coord.z] = new Voxel(vertexCase);
-    }
-
-
-    // Uses Triangle Table lookup to create the geometry data for a given voxel.
-    void InterpretCase(Vector3Int coord) {
-
-        int vertexCase = voxels[coord.x, coord.y, coord.z].VertexCase;
-
+        // generate the vertices for a given voxel case.
         // works through the triangle table entry which tells which order to draw the triangles in.
         // works in groups of 3's to go one triangle at a time.
-        // EXAMPLE: Case 3 - { 1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-        // Build 2 triangles by connecting edges 1, 8, 3 and edges 9, 8, 1 on the voxel.
-        for (int i = 0; triangleTable[vertexCase][i] != -1; i += 3) {
-            vertices[bufferIndex + 0] = Interpolate(triangleTable[vertexCase][i + 2], coord);
-            vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
-            vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
+        for (int i = 0; triangleTable[voxelCase][i] != -1; i += 3) {
+
+            vertices[bufferIndex + 0] = MakeVertex(triangleTable[voxelCase][i + 2], 0, 0, 0);
+            vertices[bufferIndex + 1] = MakeVertex(triangleTable[voxelCase][i + 1], 0, 0, 0);
+            vertices[bufferIndex + 2] = MakeVertex(triangleTable[voxelCase][i + 0], 0, 0, 0);
 
             triangles[bufferIndex + 0] = bufferIndex + 0;
             triangles[bufferIndex + 1] = bufferIndex + 1;
@@ -145,65 +77,71 @@ public class MarchingCubes : MonoBehaviour
             
             bufferIndex += 3;
         }
-    }
 
-
-    // Places the vertex appropriately between two vertices on a given edge based on the density values at those points.
-    Vector3 Interpolate(int edge, Vector3Int coord) {
-        
-        float fraction, point1, point2;
-        Vector3 cornerA, cornerB;
-
-        // Get the vertex pair corresponding to the given edge.
-        cornerA = coord + BaseCorners[edgeTable[edge].x];
-        cornerB = coord + BaseCorners[edgeTable[edge].y];
-
-        // Get the density values at those two points.
-        point1 = SampleSlope(cornerA);
-        point2 = SampleSlope(cornerB);
-
-        // the fraction represents the distance to place the vertex between corners A and B (ie 25% of the way between A and B).
-        // Which point (1 or 2) becomes the numerator depends on which of the two points is above the terrain surface (greater than 0).
-        float numerator = (point1 >= 0) ? point1 : point2;
-        fraction = numerator / (Mathf.Abs(point1) + Mathf.Abs(point2));
-
-        // swap cornerA and cornerB if point 2 is above the terrain surface (greater than 0; one point must be above surface, one must be below).
-        if (point1 < 0) {
-            Vector3 temp = cornerA;
-            cornerA = cornerB;
-            cornerB = temp;
-        }
-
-        return Vector3.Lerp(cornerA, cornerB, fraction);
-    }
-
-
-    // The Marching part of Marching Cubes.
-    void MarchBlock() {
-
-        for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
-
-                    if (voxels[i, j, k].VertexCase != 0 && voxels[i, j, k].VertexCase != 255) {
-                        // // create a cube to visualize the terrain surface
-                        // var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                        // cube.name = voxels[i, j, k].VertexCase.ToString();
-                        
-                        InterpretCase(new Vector3Int(i, j, k));
-                    }
-                }
-            }
+        Debug.Log("Voxel Case: " + voxelCase.ToString());
+        for (int j = 0; triangleTable[voxelCase][j] != -1; j++) {
+            Debug.Log(triangleTable[voxelCase][j]);
         }
     }
 
+    Vector3 MakeVertex(int edge, int x, int y, int z) {
+        Vector3 output = Vector3.zero;
+        Vector3 coord = new Vector3(x, y, z);
 
-    // Updates the mesh for this voxel with our vertices and triangles arrays.
-    void UpdateMesh() {
-        mesh.Clear();
-        mesh.vertices = vertices;
-        mesh.triangles = triangles;
+        // determine where to put the vertex along the edge
+        switch (edge) {
+            case 0:
+                output = Vector3.Lerp(coord + V0, coord + V1, 0.5f);
+                break;
+
+            case 1:
+                output = Vector3.Lerp(coord + V1, coord + V2, 0.5f);
+                break;
+
+            case 2:
+                output = Vector3.Lerp(coord + V2, coord + V3, 0.5f);
+                break;
+
+            case 3:
+                output = Vector3.Lerp(coord + V0, coord + V3, 0.5f);
+                break;
+
+            case 4:
+                output = Vector3.Lerp(coord + V4, coord + V5, 0.5f);
+                break;
+
+            case 5:
+                output = Vector3.Lerp(coord + V5, coord + V6, 0.5f);
+                break;
+
+            case 6:
+                output = Vector3.Lerp(coord + V6, coord + V7, 0.5f);
+                break;
+
+            case 7:
+                output = Vector3.Lerp(coord + V4, coord + V7, 0.5f);
+                break;
+
+            case 8:
+                output = Vector3.Lerp(coord + V0, coord + V4, 0.5f);
+                break;
+
+            case 9:
+                output = Vector3.Lerp(coord + V1, coord + V5, 0.5f);
+                break;
+
+            case 10:
+                output = Vector3.Lerp(coord + V2, coord + V6, 0.5f);
+                break;
+
+            case 11:
+                output = Vector3.Lerp(coord + V7, coord + V3, 0.5f);
+                break;
+        }
+
+        return output;
     }
+
 
 
     // geometry table for vertex cases. -1 means no vertex, other represent which edge to interpolate.
