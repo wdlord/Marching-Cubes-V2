@@ -2,43 +2,68 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(MeshFilter))]
 public class MarchingCubesGPU : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
-    [SerializeField] ComputeShader computeShader;       // the shader used to get the vertex cases.
+    [SerializeField] GameObject vertexSphere;
+    [SerializeField] ComputeShader evaluateVoxels;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
 
     int[][] triangleTable;                                                  // vertex case config lookups.
+    int[] triangleTable2;
     int Dimensions = 32;                                                    // size of a block (Dimensions = 32 means the block is 32x32x32).
     TextureFormat texFormat = TextureFormat.RFloat;                         // graphics format of the textures. RFloat means Red channel only, 32 bit precision.
     RenderTextureFormat renderTexFormat = RenderTextureFormat.RFloat;       // graphics format of the render textures. RFloat means Red channel only, 32 bit precision.
+    ComputeBuffer cornerBuffer;
 
-    ComputeBuffer vertexBuffer;
-    ComputeBuffer triangleBuffer;
+    ComputeBuffer polygonBuffer;
     ComputeBuffer edgeBuffer;
     ComputeBuffer triTableBuffer;
     Vector3[] vertices;
     int[] triangles;
+    Mesh mesh;
 
     public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
     Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
 
     // Lookup table. Given a certain edge number, that index gives the vertex pair connected by that edge. For use with BaseCorners array above.
-    Vector3[] edgeTable = {
-        new Vector3(0, 0, 0), new Vector3(0, 1, 0),     // V0, V1
-        new Vector3(0, 1, 0), new Vector3(1, 1, 0),     // V1, V2
-        new Vector3(1, 1, 0), new Vector3(1, 0, 0),     // V2, V3
-        new Vector3(0, 0, 0), new Vector3(1, 0, 0),     // V0, V3
-        new Vector3(0, 0, 1), new Vector3(0, 1, 1),     // V4, V5
-        new Vector3(0, 1, 1), new Vector3(1, 1, 1),     // V5, V6
-        new Vector3(1, 1, 1), new Vector3(1, 0, 1),     // V6, V7
-        new Vector3(0, 0, 1), new Vector3(1, 0, 1),     // V4, V7
-        new Vector3(0, 0, 0), new Vector3(0, 0, 1),     // V0, V4
-        new Vector3(0, 1, 0), new Vector3(0, 1, 1),     // V1, V5
-        new Vector3(1, 1, 0), new Vector3(1, 1, 1),     // V2, V6
-        new Vector3(1, 0, 1), new Vector3(1, 0, 0)      // V7, V3
+    Vector3Int[] edgeTable = {
+        new Vector3Int(0, 0, 0), new Vector3Int(0, 1, 0),     // V0, V1
+        new Vector3Int(0, 1, 0), new Vector3Int(1, 1, 0),     // V1, V2
+        new Vector3Int(1, 1, 0), new Vector3Int(1, 0, 0),     // V2, V3
+        new Vector3Int(0, 0, 0), new Vector3Int(1, 0, 0),     // V0, V3
+        new Vector3Int(0, 0, 1), new Vector3Int(0, 1, 1),     // V4, V5
+        new Vector3Int(0, 1, 1), new Vector3Int(1, 1, 1),     // V5, V6
+        new Vector3Int(1, 1, 1), new Vector3Int(1, 0, 1),     // V6, V7
+        new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 1),     // V4, V7
+        new Vector3Int(0, 0, 0), new Vector3Int(0, 0, 1),     // V0, V4
+        new Vector3Int(0, 1, 0), new Vector3Int(0, 1, 1),     // V1, V5
+        new Vector3Int(1, 1, 0), new Vector3Int(1, 1, 1),     // V2, V6
+        new Vector3Int(1, 0, 1), new Vector3Int(1, 0, 0)      // V7, V3
     };
+
+    // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
+    Vector3Int[] BaseCorners = {
+        new Vector3Int(0, 0, 0),
+        new Vector3Int(0, 1, 0),
+        new Vector3Int(1, 1, 0),
+        new Vector3Int(1, 0, 0),
+        new Vector3Int(0, 0, 1),
+        new Vector3Int(0, 1, 1),
+        new Vector3Int(1, 1, 1),
+        new Vector3Int(1, 0, 1)
+    };
+
+    // Polygon struct
+    struct Polygon {
+        public Vector3 a;
+        public Vector3 b;
+        public Vector3 c;
+    };
+
+    Polygon[] polygons;
 
     // Start is called before the first frame update
     void Start()
@@ -46,8 +71,14 @@ public class MarchingCubesGPU : MonoBehaviour
         voxelTexture = new Texture3D(32, 32, 32, texFormat, 0);                     // will store the final voxel data
         vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the 3 x 12
         triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
+        polygons = new Polygon[vertices.Length/3];
+
+        mesh = new Mesh();
+        GetComponent<MeshFilter>().mesh = mesh;
 
         LoadTable();
+
+        AdaptTable();
 
         EvaluateVoxels();
 
@@ -62,8 +93,9 @@ public class MarchingCubesGPU : MonoBehaviour
 
 
     void EvaluateVoxels() {
-        // set renderTexture attributes
+        // set renderTexture attributes. This renderTexture will hold the voxel case information.
         renderTexture = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
+
         renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
         renderTexture.volumeDepth = 32;
         renderTexture.enableRandomWrite = true;
@@ -72,9 +104,15 @@ public class MarchingCubesGPU : MonoBehaviour
 
         Graphics.SetRandomWriteTarget(0, renderTexture);
 
+        // this compute buffer will store the base corners we use in calculating voxel cases.
+        cornerBuffer = new ComputeBuffer(BaseCorners.Length, sizeof(int) * 3);
+        cornerBuffer.SetData(BaseCorners);
+
         // Dispatch shader
-        computeShader.SetTexture(0, "voxels", renderTexture);
-        computeShader.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8's represent the thread group sizes of the shader
+        evaluateVoxels.SetTexture(0, "voxels", renderTexture);
+        evaluateVoxels.SetBuffer(0, "baseCorners", cornerBuffer);
+
+        evaluateVoxels.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8's represent the thread group sizes of the shader
     }
 
 
@@ -138,28 +176,37 @@ public class MarchingCubesGPU : MonoBehaviour
     void GetMeshData() {
 
         // initialize buffers needed in the shader
-        vertexBuffer = new ComputeBuffer(vertices.Length, sizeof(float) * 3, ComputeBufferType.Append);
-        triangleBuffer = new ComputeBuffer(triangles.Length, sizeof(int), ComputeBufferType.Append);
-        triTableBuffer = new ComputeBuffer(256 * 16, sizeof(int));
-        edgeBuffer = new ComputeBuffer(edgeTable.Length, sizeof(float) * 3);
+        int polygonSize = sizeof(float) * 9;
+        polygonBuffer = new ComputeBuffer(vertices.Length/3, polygonSize, ComputeBufferType.Append);
+        triTableBuffer = new ComputeBuffer(triangleTable2.Length, sizeof(int));
+        edgeBuffer = new ComputeBuffer(edgeTable.Length, sizeof(int) * 3);
 
         // set the data that needs to be set beforehand (lookup tables in this case).
-        triTableBuffer.SetData(triangleTable);
+        triTableBuffer.SetData(triangleTable2);
         edgeBuffer.SetData(edgeTable);
 
         // set variables in shader.
         interpretCase.SetTexture(0, "voxels", renderTexture);
         interpretCase.SetBuffer(0, "triangleTable", triTableBuffer);
         interpretCase.SetBuffer(0, "edgeTable", edgeBuffer);
-        interpretCase.SetBuffer(0, "vertexBuffer", vertexBuffer);
-        interpretCase.SetBuffer(0, "triangleBuffer", triangleBuffer);
+        interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
 
         // Dispatch shader.
         interpretCase.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);
 
         // retrieve mesh data from buffers after shader has run.
-        vertexBuffer.GetData(vertices);
-        triangleBuffer.GetData(triangles);
+        polygonBuffer.GetData(polygons);
+        
+        // unpack the polygons into the vertices and triangles arrays.
+        for (int i = 0; i < polygons.Length; i++) {
+            vertices[3 * i + 0] = polygons[i].a;
+            vertices[3 * i + 1] = polygons[i].b;
+            vertices[3 * i + 2] = polygons[i].c;
+
+            triangles[3 * i + 0] = 3 * i + 0;
+            triangles[3 * i + 1] = 3 * i + 1;
+            triangles[3 * i + 2] = 3 * i + 2;
+        }
     }
 
 
@@ -194,6 +241,18 @@ public class MarchingCubesGPU : MonoBehaviour
         output.Apply();
 
         return output;
+    }
+
+
+    // make the 2D array into a 1D array we can pass to the compute shader via buffer.
+    void AdaptTable() {
+        triangleTable2 = new int[256 * 16];
+        
+        for (int i = 0; i < 256; i++) {
+            for (int j = 0; j < 16; j++) {
+                triangleTable2[i*16 + j] = triangleTable[i][j];
+            }
+        }
     }
 
 

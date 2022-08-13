@@ -1,54 +1,74 @@
 #pragma kernel CSMain
 
-// take in voxel cases
-// take in triangle table
-// take in edge table
-// take in vertices (output)
-// take in triangles (output)
+// Stores vertex information about a single triangle.
+// If I tried appending 1 vertex at a time, they could get mixed up. This keeps the triangles grouped correctly.
+struct Polygon {
+    float3 a;
+    float3 b;
+    float3 c;
+};
 
-RWTexture2DArray<float> voxels;                 // voxel data computed by Evaluation.compute 
-RWStructuredBuffer<int> triangleTable;          // triangle table lookup
-RWStructuredBuffer<float3> edgeTable;           // edge table lookup
-AppendStructuredBuffer<float3> vertexBuffer;    // vertices for mesh    (output)
-AppendStructuredBuffer<int> triangleBuffer;     // triangles for mesh   (output)
+RWTexture2DArray<float> voxels;                     // voxel data computed by Evaluation.compute 
+RWStructuredBuffer<int> triangleTable;              // triangle table lookup
+RWStructuredBuffer<int3> edgeTable;                 // edge table lookup
+AppendStructuredBuffer<Polygon> polygonBuffer;      // vertices for mesh    (output)
 
-// sample slope / density function here (maybe)
 
-[numthreads(8,8,1)]
+float SampleSlope(float3 coord) {
+    return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
+}
+
+
+// finds the correct placement of a vertex on a given edge of the voxel.
+float3 Interpolate(int edge, uint3 coord) {
+    float fraction, point1, point2;
+    uint3 cornerA, cornerB;
+
+    // Get the vertex pair corresponding to the given edge.
+    cornerA = coord + edgeTable[edge * 2 + 0];
+    cornerB = coord + edgeTable[edge * 2 + 1];
+
+    // Get the density values at those two points.
+    point1 = SampleSlope(float3(cornerA));
+    point2 = SampleSlope(float3(cornerB));
+
+    // the fraction represents the distance to place the vertex between corners A and B (ie 25% of the way between A and B).
+    // Which point (1 or 2) becomes the numerator depends on which of the two points is above the terrain surface (greater than 0).
+    float numerator = (point1 >= 0) ? point1 : point2;
+    fraction = numerator / (abs(point1) + abs(point2));
+
+    // swap cornerA and cornerB if point 2 is above the terrain surface (greater than 0; one point must be above surface, one must be below).
+    if (point1 < 0) {
+        uint3 temp = cornerA;
+        cornerA = cornerB;
+        cornerB = temp;
+    }
+
+    // perform the linear interpolation.
+    return lerp(float3(cornerA), float3(cornerB), fraction);
+}
+
+
+[numthreads(8,8,8)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-    int voxelCase = int(voxels[id.xyz] * 1000);
+    int voxelCase = int(voxels[id.xyz] * 1000);     // cases are stored as floats within the RenderTexture.
 
     // ignore cases with no geometry
     if (voxelCase != 0 && voxelCase != 255) {
-        
-        float3 coord = float3(id.x, id.y, id.z);
 
-        // TODO:
-        // create a Polygon struct so that we can append one polygon at a time instead of one vertex / one triangle.
-        // create another compute shader designed to unpack those polygons into vertices and triangles arrays.
+        // triangle table lookup and edge table lookup to construct a single mesh polygon/triangle.
+        // increments by 3 to go one polygon at a time.
+        // indexed by (voxelCase * 16 + i) because the original triangle table is int[256][16].
+        for (int i = 0; triangleTable[voxelCase * 16 + i] != -1; i += 3) {
+            Polygon newPolygon;
+            
+            // set the vertices for a new polygon in correct draw order.
+            newPolygon.a = Interpolate(triangleTable[voxelCase * 16 + i + 2], id);
+            newPolygon.b = Interpolate(triangleTable[voxelCase * 16 + i + 1], id);
+            newPolygon.c = Interpolate(triangleTable[voxelCase * 16 + i + 0], id);
 
-        // triangle table lookup and edge table lookup
-        for (int i = 0; triangleTable[vertexCase * 16 + i] != -1; i++) {
-            vertexBuffer.Append(Interpolate(triangleTable[vertexCase * 16 + i], coord));
-            triangleBuffer.Append()
+            polygonBuffer.Append(newPolygon);
         }
-
-        // just for reference, delete later.
-        for (int i = 0; triangleTable[vertexCase][i] != -1; i += 3) {
-                vertices[bufferIndex + 0] = Interpolate(triangleTable[vertexCase][i + 2], coord);
-                vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
-                vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
-
-                triangles[bufferIndex + 0] = bufferIndex + 0;
-                triangles[bufferIndex + 1] = bufferIndex + 1;
-                triangles[bufferIndex + 2] = bufferIndex + 2;
-                
-                bufferIndex += 3;
-            }
-
-        // interpolation
-        // set vertices and triangles
-
-        Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);}
+    }
 }
