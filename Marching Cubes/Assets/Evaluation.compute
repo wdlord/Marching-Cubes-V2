@@ -9,7 +9,7 @@ float SampleSlope(float3 coord) {
     return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
 }
 
-[numthreads(8,8,8)]
+[numthreads(11,11,3)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
     int vertexCase = 0;

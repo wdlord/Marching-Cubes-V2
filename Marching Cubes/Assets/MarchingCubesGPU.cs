@@ -11,16 +11,19 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
 
-    int[][] triangleTable;                                                  // vertex case config lookups.
-    int[] triangleTable2;
+    int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
+    int[] triangleTable2;                                                   // triangle table converted to 1 dimensional array (for use in compute shader).
+    Vector3Int[] BaseCorners;                                               // The 8 base coordinates for voxel vertices.
+    Vector3Int[] edgeTable;                                                 // index represents edge case, output is the base corners connected by that edge.
+
     int Dimensions = 32;                                                    // size of a block (Dimensions = 32 means the block is 32x32x32).
     TextureFormat texFormat = TextureFormat.RFloat;                         // graphics format of the textures. RFloat means Red channel only, 32 bit precision.
     RenderTextureFormat renderTexFormat = RenderTextureFormat.RFloat;       // graphics format of the render textures. RFloat means Red channel only, 32 bit precision.
     ComputeBuffer cornerBuffer;
 
-    ComputeBuffer polygonBuffer;
-    ComputeBuffer edgeBuffer;
-    ComputeBuffer triTableBuffer;
+    ComputeBuffer polygonBuffer;                                            // Polygons are streamed out into this buffer (type Polygon struct).
+    ComputeBuffer edgeBuffer;                                               // Used to pass in edgeTable to compute shader.
+    ComputeBuffer triTableBuffer;                                           // Used to pass in triangleTable2 to compute shader.
     Vector3[] vertices;
     int[] triangles;
     Mesh mesh;
@@ -28,35 +31,7 @@ public class MarchingCubesGPU : MonoBehaviour
     public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
     Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
 
-    // Lookup table. Given a certain edge number, that index gives the vertex pair connected by that edge. For use with BaseCorners array above.
-    Vector3Int[] edgeTable = {
-        new Vector3Int(0, 0, 0), new Vector3Int(0, 1, 0),     // V0, V1
-        new Vector3Int(0, 1, 0), new Vector3Int(1, 1, 0),     // V1, V2
-        new Vector3Int(1, 1, 0), new Vector3Int(1, 0, 0),     // V2, V3
-        new Vector3Int(0, 0, 0), new Vector3Int(1, 0, 0),     // V0, V3
-        new Vector3Int(0, 0, 1), new Vector3Int(0, 1, 1),     // V4, V5
-        new Vector3Int(0, 1, 1), new Vector3Int(1, 1, 1),     // V5, V6
-        new Vector3Int(1, 1, 1), new Vector3Int(1, 0, 1),     // V6, V7
-        new Vector3Int(0, 0, 1), new Vector3Int(1, 0, 1),     // V4, V7
-        new Vector3Int(0, 0, 0), new Vector3Int(0, 0, 1),     // V0, V4
-        new Vector3Int(0, 1, 0), new Vector3Int(0, 1, 1),     // V1, V5
-        new Vector3Int(1, 1, 0), new Vector3Int(1, 1, 1),     // V2, V6
-        new Vector3Int(1, 0, 1), new Vector3Int(1, 0, 0)      // V7, V3
-    };
-
-    // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
-    Vector3Int[] BaseCorners = {
-        new Vector3Int(0, 0, 0),
-        new Vector3Int(0, 1, 0),
-        new Vector3Int(1, 1, 0),
-        new Vector3Int(1, 0, 0),
-        new Vector3Int(0, 0, 1),
-        new Vector3Int(0, 1, 1),
-        new Vector3Int(1, 1, 1),
-        new Vector3Int(1, 0, 1)
-    };
-
-    // Polygon struct
+    // Stores an entire triangle (allows us to stream vertices out of the compute shader in the correct order).
     struct Polygon {
         public Vector3 a;
         public Vector3 b;
@@ -77,7 +52,8 @@ public class MarchingCubesGPU : MonoBehaviour
         GetComponent<MeshFilter>().mesh = mesh;
 
         LoadTable();
-
+        LoadBaseCorners();
+        LoadEdgeTable();
         AdaptTable();
 
         EvaluateVoxels();
@@ -94,10 +70,10 @@ public class MarchingCubesGPU : MonoBehaviour
 
     void EvaluateVoxels() {
         // set renderTexture attributes. This renderTexture will hold the voxel case information.
-        renderTexture = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
+        renderTexture = new RenderTexture(33, 33, 0, renderTexFormat, RenderTextureReadWrite.Linear);
 
         renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
-        renderTexture.volumeDepth = 32;
+        renderTexture.volumeDepth = 33;
         renderTexture.enableRandomWrite = true;
         renderTexture.wrapMode = TextureWrapMode.Clamp;
         renderTexture.Create();
@@ -112,7 +88,7 @@ public class MarchingCubesGPU : MonoBehaviour
         evaluateVoxels.SetTexture(0, "voxels", renderTexture);
         evaluateVoxels.SetBuffer(0, "baseCorners", cornerBuffer);
 
-        evaluateVoxels.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);    // the 8's represent the thread group sizes of the shader
+        evaluateVoxels.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
     }
 
 
@@ -253,6 +229,40 @@ public class MarchingCubesGPU : MonoBehaviour
                 triangleTable2[i*16 + j] = triangleTable[i][j];
             }
         }
+    }
+
+
+    // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
+    void LoadBaseCorners() {
+        BaseCorners = new Vector3Int[] {
+            new Vector3Int(0, 0, 0),
+            new Vector3Int(0, 1, 0),
+            new Vector3Int(1, 1, 0),
+            new Vector3Int(1, 0, 0),
+            new Vector3Int(0, 0, 1),
+            new Vector3Int(0, 1, 1),
+            new Vector3Int(1, 1, 1),
+            new Vector3Int(1, 0, 1)
+        };
+    }
+
+    
+    // Lookup table. Given a certain edge number, that index gives the vertex pair connected by that edge. For use with BaseCorners array above.
+    void LoadEdgeTable() {
+        edgeTable = new Vector3Int[] {
+            BaseCorners[0], BaseCorners[1],     // V0, V1
+            BaseCorners[1], BaseCorners[2],     // V1, V2
+            BaseCorners[2], BaseCorners[3],     // V2, V3
+            BaseCorners[0], BaseCorners[3],     // V0, V3
+            BaseCorners[4], BaseCorners[5],     // V4, V5
+            BaseCorners[5], BaseCorners[6],     // V5, V6
+            BaseCorners[6], BaseCorners[7],     // V6, V7
+            BaseCorners[4], BaseCorners[7],     // V4, V7
+            BaseCorners[0], BaseCorners[4],     // V0, V4
+            BaseCorners[1], BaseCorners[5],     // V1, V5
+            BaseCorners[2], BaseCorners[6],     // V2, V6
+            BaseCorners[7], BaseCorners[3]      // V7, V3
+        };
     }
 
 
