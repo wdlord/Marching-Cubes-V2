@@ -1,12 +1,12 @@
 #pragma kernel CSMain
 
-RWTexture2DArray<float> terrainMap;
+RWTexture2DArray<float> terrainMap;     // output texture storing density function values.
 
- // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
-
+// density function
 float SampleSlope(float3 coord) {
     return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
 }
+
 
 [numthreads(11,11,3)]
 void CSMain (uint3 id : SV_DispatchThreadID)

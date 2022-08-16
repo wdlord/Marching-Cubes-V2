@@ -8,16 +8,11 @@ struct Polygon {
     float3 c;
 };
 
-RWTexture2DArray<float> terrainMap;                     // voxel data computed by Evaluation.compute 
+RWTexture2DArray<float> terrainMap;                 // density function data computed by Evaluation.compute 
 RWStructuredBuffer<int> triangleTable;              // triangle table lookup
 RWStructuredBuffer<int3> edgeTable;                 // edge table lookup
-RWStructuredBuffer<int3> baseCorners;
+RWStructuredBuffer<int3> baseCorners;               // base corners of cube
 AppendStructuredBuffer<Polygon> polygonBuffer;      // vertices for mesh    (output)
-
-
-float SampleSlope(float3 coord) {
-    return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
-}
 
 
 // finds the correct placement of a vertex on a given edge of the voxel.
@@ -30,8 +25,8 @@ float3 Interpolate(int edge, uint3 coord) {
     cornerB = coord + edgeTable[edge * 2 + 1];
 
     // Get the density values at those two points.
-    point1 = SampleSlope(float3(cornerA));
-    point2 = SampleSlope(float3(cornerB));
+    point1 = terrainMap[cornerA];
+    point2 = terrainMap[cornerB];
 
     // the fraction represents the distance to place the vertex between corners A and B (ie 25% of the way between A and B).
     // Which point (1 or 2) becomes the numerator depends on which of the two points is above the terrain surface (greater than 0).
