@@ -28,20 +28,12 @@ float3 Interpolate(int edge, uint3 coord) {
     point1 = terrainMap[cornerA];
     point2 = terrainMap[cornerB];
 
-    // the fraction represents the distance to place the vertex between corners A and B (ie 25% of the way between A and B).
-    // Which point (1 or 2) becomes the numerator depends on which of the two points is above the terrain surface (greater than 0).
-    float numerator = (point1 >= 0) ? point1 : point2;
-    fraction = numerator / (abs(point1) + abs(point2));
-
-    // swap cornerA and cornerB if point 2 is above the terrain surface (greater than 0; one point must be above surface, one must be below).
-    if (point1 < 0) {
-        uint3 temp = cornerA;
-        cornerA = cornerB;
-        cornerB = temp;
+    // depending on which point (1 or 2) is greater than 0, different values must be lerped.
+    // example: 80% of the way between A and B vs 80% of the way between B and A.
+    if (point1 >= 0) {
+        return lerp(cornerA, cornerB, point1 / (abs(point1) + abs(point2)));
     }
-
-    // perform the linear interpolation.
-    return lerp(float3(cornerA), float3(cornerB), fraction);
+    return lerp(cornerB, cornerA, point2 / (abs(point1) + abs(point2)));
 }
 
 
