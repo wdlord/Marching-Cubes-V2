@@ -10,20 +10,12 @@ public class MarchingCubes : MonoBehaviour
 
     int[][] triangleTable;
     int Dimensions = 32;
-    Voxel[,,] voxels;
+    float[,,] terrainMap;
 
     Vector3[] vertices;
     int[] triangles;
     Mesh mesh;
     int bufferIndex;
-
-    // represents a single voxel unit of a block.
-    struct Voxel {
-        public Voxel(int VCase) {
-            VertexCase = VCase;
-        }
-        public int VertexCase { get; }
-    }
 
     // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
     Vector3[] BaseCorners = {
@@ -57,9 +49,9 @@ public class MarchingCubes : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        voxels = new Voxel[Dimensions, Dimensions, Dimensions];
-        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
-        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)]; // no idea why the 3 x 12
+        terrainMap = new float[Dimensions + 1, Dimensions + 1, Dimensions + 1];
+        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the 3 x 12
+        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
 
         mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = mesh;
@@ -71,13 +63,6 @@ public class MarchingCubes : MonoBehaviour
         MarchBlock();
         
         UpdateMesh();
-        
-        foreach (Vector3 v in vertices) {
-            if (v != Vector3.zero) {
-                var sphere = Instantiate(vertexSphere, v, Quaternion.identity);
-            }
-        }
-        
     }
 
 
@@ -98,37 +83,29 @@ public class MarchingCubes : MonoBehaviour
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
 
-                    EvaluateVoxel(new Vector3Int(i, j, k));
+                    // evaluate and store each corner so we can evaluate the voxel cases later.
+                    terrainMap[i, j, k] = SampleSlope(new Vector3Int(i, j, k));
                 }
             }
         }
     }
 
 
-    // fills our array of voxels with case values based on the slope
-    void EvaluateVoxel(Vector3Int coord) {
+    // Uses Triangle Table lookup to create the geometry data for a given voxel.
+    void InterpretCase(Vector3Int coord) {
 
-            int vertexCase = 0;
+        int vertexCase = 0;
 
-            // Generates the vertex case by evaluating each corner of the voxel against the density function.
+        // Generates the vertex case by evaluating each corner of the voxel against the density function.
             // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
             // EXAMPLE: Let corners 0, 3, 7 be greater than 0.
             //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
             //      resulting case is decimal 137.
             for (int i = 0; i < BaseCorners.Length; i++) {
-                if (SampleSlope(coord + BaseCorners[i]) > 0)
+                if (SampleSlope(coord + BaseCorners[i]) > 0) {
                     vertexCase |= 1 << i;
+                }
             }
-
-            // set the values in the voxel struct
-            voxels[coord.x, coord.y, coord.z] = new Voxel(vertexCase);
-    }
-
-
-    // Uses Triangle Table lookup to create the geometry data for a given voxel.
-    void InterpretCase(Vector3Int coord) {
-
-        int vertexCase = voxels[coord.x, coord.y, coord.z].VertexCase;
 
         // works through the triangle table entry which tells which order to draw the triangles in.
         // works in groups of 3's to go one triangle at a time.
@@ -151,7 +128,7 @@ public class MarchingCubes : MonoBehaviour
     // Places the vertex appropriately between two vertices on a given edge based on the density values at those points.
     Vector3 Interpolate(int edge, Vector3Int coord) {
         
-        float fraction, point1, point2;
+        float point1, point2;
         Vector3 cornerA, cornerB;
 
         // Get the vertex pair corresponding to the given edge.
@@ -162,19 +139,12 @@ public class MarchingCubes : MonoBehaviour
         point1 = SampleSlope(cornerA);
         point2 = SampleSlope(cornerB);
 
-        // the fraction represents the distance to place the vertex between corners A and B (ie 25% of the way between A and B).
-        // Which point (1 or 2) becomes the numerator depends on which of the two points is above the terrain surface (greater than 0).
-        float numerator = (point1 >= 0) ? point1 : point2;
-        fraction = numerator / (Mathf.Abs(point1) + Mathf.Abs(point2));
-
-        // swap cornerA and cornerB if point 2 is above the terrain surface (greater than 0; one point must be above surface, one must be below).
-        if (point1 < 0) {
-            Vector3 temp = cornerA;
-            cornerA = cornerB;
-            cornerB = temp;
+        // points need to be swapped depending on which point (1 or 2) is greater than 0 (above the surface).
+        // its the difference of 80% between A and B vs 80% between B and A.
+        if (point1 >= 0) {
+            return Vector3.Lerp(cornerA, cornerB, point1 / (Mathf.Abs(point1) + Mathf.Abs(point2)));
         }
-
-        return Vector3.Lerp(cornerA, cornerB, fraction);
+        return Vector3.Lerp(cornerB, cornerA, point2 / (Mathf.Abs(point1) + Mathf.Abs(point2)));
     }
 
 
@@ -185,13 +155,11 @@ public class MarchingCubes : MonoBehaviour
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
 
-                    if (voxels[i, j, k].VertexCase != 0 && voxels[i, j, k].VertexCase != 255) {
-                        // // create a cube to visualize the terrain surface
-                        // var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                        // cube.name = voxels[i, j, k].VertexCase.ToString();
-                        
-                        InterpretCase(new Vector3Int(i, j, k));
-                    }
+                    // // create a cube to visualize the terrain surface
+                    // var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
+                    // cube.name = voxels[i, j, k].VertexCase.ToString();
+                    
+                    InterpretCase(new Vector3Int(i, j, k));
                 }
             }
         }
