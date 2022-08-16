@@ -1,7 +1,6 @@
 #pragma kernel CSMain
 
-RWTexture2DArray<float> voxels;
-RWStructuredBuffer<int3> baseCorners;
+RWTexture2DArray<float> terrainMap;
 
  // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
 
@@ -12,19 +11,5 @@ float SampleSlope(float3 coord) {
 [numthreads(11,11,3)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-    int vertexCase = 0;
-
-    // Generates the vertex case by evaluating each corner of the voxel against the density function.
-    // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
-    // EXAMPLE: Let corners 0, 3, 7 be greater than 0.
-    //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
-    //      resulting case is decimal 137.
-    for (int i = 0; i < baseCorners.Length; i++) {
-        if (SampleSlope(id.xyz + baseCorners[i]) > 0) {
-            vertexCase |= 1 << i;
-        }
-    }
-
-    // set the values in the voxel struct
-    voxels[id.xyz] = vertexCase/1000.0;
+    terrainMap[id.xyz] = SampleSlope(float3(id.xyz));
 }

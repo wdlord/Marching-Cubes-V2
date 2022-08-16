@@ -7,7 +7,7 @@ public class MarchingCubesGPU : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
     [SerializeField] GameObject vertexSphere;
-    [SerializeField] ComputeShader evaluateVoxels;       // the shader used to get the vertex cases.
+    [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
 
@@ -56,7 +56,7 @@ public class MarchingCubesGPU : MonoBehaviour
         LoadEdgeTable();
         AdaptTable();
 
-        EvaluateVoxels();
+        EvaluateTerrain();
 
         // ExtractVoxelData(renderTexture, voxelTexture);
 
@@ -68,7 +68,7 @@ public class MarchingCubesGPU : MonoBehaviour
     }
 
 
-    void EvaluateVoxels() {
+    void EvaluateTerrain() {
         // set renderTexture attributes. This renderTexture will hold the voxel case information.
         renderTexture = new RenderTexture(33, 33, 0, renderTexFormat, RenderTextureReadWrite.Linear);
 
@@ -80,15 +80,10 @@ public class MarchingCubesGPU : MonoBehaviour
 
         Graphics.SetRandomWriteTarget(0, renderTexture);
 
-        // this compute buffer will store the base corners we use in calculating voxel cases.
-        cornerBuffer = new ComputeBuffer(BaseCorners.Length, sizeof(int) * 3);
-        cornerBuffer.SetData(BaseCorners);
-
         // Dispatch shader
-        evaluateVoxels.SetTexture(0, "voxels", renderTexture);
-        evaluateVoxels.SetBuffer(0, "baseCorners", cornerBuffer);
+        evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
 
-        evaluateVoxels.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
+        evaluateTerrain.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
     }
 
 
@@ -156,15 +151,18 @@ public class MarchingCubesGPU : MonoBehaviour
         polygonBuffer = new ComputeBuffer(vertices.Length/3, polygonSize, ComputeBufferType.Append);
         triTableBuffer = new ComputeBuffer(triangleTable2.Length, sizeof(int));
         edgeBuffer = new ComputeBuffer(edgeTable.Length, sizeof(int) * 3);
+        cornerBuffer = new ComputeBuffer(BaseCorners.Length, sizeof(int) * 3);
 
         // set the data that needs to be set beforehand (lookup tables in this case).
         triTableBuffer.SetData(triangleTable2);
         edgeBuffer.SetData(edgeTable);
+        cornerBuffer.SetData(BaseCorners);
 
         // set variables in shader.
-        interpretCase.SetTexture(0, "voxels", renderTexture);
+        interpretCase.SetTexture(0, "terrainMap", renderTexture);
         interpretCase.SetBuffer(0, "triangleTable", triTableBuffer);
         interpretCase.SetBuffer(0, "edgeTable", edgeBuffer);
+        interpretCase.SetBuffer(0, "baseCorners", cornerBuffer);
         interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
 
         // Dispatch shader.
