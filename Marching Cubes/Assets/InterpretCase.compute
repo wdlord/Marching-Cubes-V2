@@ -1,0 +1,73 @@
+#pragma kernel CSMain
+
+// Stores vertex information about a single triangle.
+// If I tried appending 1 vertex at a time, they could get mixed up. This keeps the triangles grouped correctly.
+struct Polygon {
+    float3 a;
+    float3 b;
+    float3 c;
+};
+
+RWTexture2DArray<float> terrainMap;                 // density function data computed by Evaluation.compute 
+RWStructuredBuffer<int> triangleTable;              // triangle table lookup
+RWStructuredBuffer<int3> edgeTable;                 // edge table lookup
+RWStructuredBuffer<int3> baseCorners;               // base corners of cube
+AppendStructuredBuffer<Polygon> polygonBuffer;      // vertices for mesh    (output)
+
+
+// finds the correct placement of a vertex on a given edge of the voxel.
+float3 Interpolate(int edge, uint3 coord) {
+    float point1, point2;
+    uint3 cornerA, cornerB;
+
+    // Get the vertex pair corresponding to the given edge.
+    cornerA = coord + edgeTable[edge * 2 + 0];
+    cornerB = coord + edgeTable[edge * 2 + 1];
+
+    // Get the density values at those two points.
+    point1 = terrainMap[cornerA];
+    point2 = terrainMap[cornerB];
+
+    // depending on which point (1 or 2) is greater than 0, different values must be lerped.
+    // example: 80% of the way between A and B vs 80% of the way between B and A.
+    if (point1 >= 0) {
+        return lerp(cornerA, cornerB, point1 / (abs(point1) + abs(point2)));
+    }
+    return lerp(cornerB, cornerA, point2 / (abs(point1) + abs(point2)));
+}
+
+
+[numthreads(8,8,8)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int voxelCase = 0;
+
+    // Generates the vertex case by evaluating each corner of the voxel against the density function.
+    // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
+    // EXAMPLE: Let corners 0, 3, 7 be greater than 0.
+    //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
+    //      resulting case is decimal 137.
+    for (int i = 0; i < baseCorners.Length; i++) {
+        if (terrainMap[id.xyz + baseCorners[i]] > 0) {
+            voxelCase |= 1 << i;
+        }
+    }
+
+    // ignore cases with no geometry
+    if (voxelCase != 0 && voxelCase != 255) {
+
+        // triangle table lookup and edge table lookup to construct a single mesh polygon/triangle.
+        // increments by 3 to go one polygon at a time.
+        // indexed by (voxelCase * 16 + i) because the original triangle table is int[256][16].
+        for (int i = 0; triangleTable[voxelCase * 16 + i] != -1; i += 3) {
+            Polygon newPolygon;
+            
+            // set the vertices for a new polygon in correct draw order.
+            newPolygon.a = Interpolate(triangleTable[voxelCase * 16 + i + 2], id);
+            newPolygon.b = Interpolate(triangleTable[voxelCase * 16 + i + 1], id);
+            newPolygon.c = Interpolate(triangleTable[voxelCase * 16 + i + 0], id);
+
+            polygonBuffer.Append(newPolygon);
+        }
+    }
+}
