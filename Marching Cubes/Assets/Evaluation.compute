@@ -3,8 +3,12 @@
 RWTexture2DArray<float> terrainMap;     // output texture storing density function values.
 
 // density function
+// tool to help visualize (must adjust values in this script):
+// http://www.math3d.org/
 float SampleSlope(float3 coord) {
-    return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
+    coord = float3(coord.z, coord.x, coord.y);
+    // return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
+    return sin(coord.x) * sin(coord.y) + 16 - coord.z;
 }
 
 

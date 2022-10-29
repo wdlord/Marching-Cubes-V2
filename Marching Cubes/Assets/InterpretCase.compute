@@ -63,9 +63,9 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             Polygon newPolygon;
             
             // set the vertices for a new polygon in correct draw order.
-            newPolygon.a = Interpolate(triangleTable[voxelCase * 16 + i + 2], id);
+            newPolygon.a = Interpolate(triangleTable[voxelCase * 16 + i + 0], id);
             newPolygon.b = Interpolate(triangleTable[voxelCase * 16 + i + 1], id);
-            newPolygon.c = Interpolate(triangleTable[voxelCase * 16 + i + 0], id);
+            newPolygon.c = Interpolate(triangleTable[voxelCase * 16 + i + 2], id);
 
             polygonBuffer.Append(newPolygon);
         }
