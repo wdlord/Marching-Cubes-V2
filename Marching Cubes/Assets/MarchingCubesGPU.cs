@@ -7,6 +7,7 @@ public class MarchingCubesGPU : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
     [SerializeField] GameObject vertexSphere;
+    [SerializeField] Material mesh_mat;
     [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
@@ -26,12 +27,12 @@ public class MarchingCubesGPU : MonoBehaviour
     ComputeBuffer triTableBuffer;                                           // Used to pass in triangleTable2 to compute shader.
     Vector3[] vertices;
     int[] triangles;
-    Mesh mesh;
+    GameObject[,,] blocks;
 
     public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
     Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
 
-    // Stores an entire triangle (allows us to stream vertices out of the compute shader in the correct order).
+    // Stores an entire mesh triangle (allows us to stream vertices out of the compute shader in the correct order).
     struct Polygon {
         public Vector3 a;
         public Vector3 b;
@@ -47,28 +48,47 @@ public class MarchingCubesGPU : MonoBehaviour
         vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the 3 x 12
         triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
         polygons = new Polygon[vertices.Length/3];
+        
+        int matrix_size = 2;
+        blocks = new GameObject[matrix_size, matrix_size, matrix_size];
 
-        mesh = new Mesh();
-        GetComponent<MeshFilter>().mesh = mesh;
+        // initialize the objects for terrain blocks
+        for (int i = 0; i < matrix_size; i++) {
+            for (int j = 0; j < matrix_size; j++) {
+                for (int k = 0; k < matrix_size; k++) {
+                    blocks[i, j, k] = new GameObject();
+                    blocks[i, j, k].transform.position = new Vector3(i, j, k) * Dimensions;
+                    blocks[i, j, k].AddComponent<MeshFilter>();
+                    blocks[i, j, k].AddComponent<MeshRenderer>();
+                    blocks[i, j, k].GetComponent<MeshFilter>().mesh = new Mesh();
+                    blocks[i, j, k].GetComponent<MeshRenderer>().material = mesh_mat;
+                }
+            }
+        }
 
         LoadTable();
         LoadBaseCorners();
         LoadEdgeTable();
         AdaptTable();
 
-        EvaluateTerrain();
+        // generate terrain block by block
+        for (int i = 0; i < matrix_size; i++) {
+            for (int j = 0; j < matrix_size; j++) {
+                for (int k = 0; k < matrix_size; k++) {
+                    EvaluateTerrain(new Vector3(i, j, k) * Dimensions);
+                    GetMeshData(new Vector3(i, j, k) * Dimensions);
+                    UpdateMesh(new Vector3Int(i, j, k));
+                }
+            }
+        }
 
-        // ExtractVoxelData(renderTexture, voxelTexture);
-
-        GetMeshData();
-
-        // March();
-
-        UpdateMesh();
+        // UpdateMesh();   // TODO: mesh 3D array
     }
 
 
-    void EvaluateTerrain() {
+    // EvaluateTerrain() evaluates the terrain data for an entire block by dispatching a compute shader.
+    void EvaluateTerrain(Vector3 rootCoord) {
+
         // set renderTexture attributes. This renderTexture will hold the voxel case information.
         renderTexture = new RenderTexture(33, 33, 0, renderTexFormat, RenderTextureReadWrite.Linear);
 
@@ -82,11 +102,13 @@ public class MarchingCubesGPU : MonoBehaviour
 
         // Dispatch shader
         evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
+        evaluateTerrain.SetFloats("rootCoord", new float[] {rootCoord.x, rootCoord.y, rootCoord.z});
 
         evaluateTerrain.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
     }
 
 
+    // Currently unused.
     void ExtractVoxelData(RenderTexture source, Texture3D voxelTexture) {
         RenderTexture[] rtSlices = new RenderTexture[Dimensions];               // 3D render texture is split into this array of 2D render textures
         Texture2D[] slices = new Texture2D[Dimensions];                         // above 2D render textures are converted into 3D render textures
@@ -121,6 +143,7 @@ public class MarchingCubesGPU : MonoBehaviour
     }
 
 
+    // Currently unused.
     void March() {
         var voxelData = voxelTexture.GetPixels();
 
@@ -143,8 +166,9 @@ public class MarchingCubesGPU : MonoBehaviour
     }
 
 
-    // Calls the compute shader to get the vertices and triangles for the surface mesh.
-    void GetMeshData() {
+    // GetMeshData() applies the Marching Cubes algorithm to our calculated terrain data via a compute shader to get the polygon data.
+    // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
+    void GetMeshData(Vector3 rootCoord) {
 
         // initialize buffers needed in the shader
         int polygonSize = sizeof(float) * 9;
@@ -184,8 +208,10 @@ public class MarchingCubesGPU : MonoBehaviour
     }
 
 
-    // Updates the mesh for this voxel with our vertices and triangles arrays.
-    void UpdateMesh() {
+    // Updates the mesh for this voxel with our 'vertices' and 'triangles' arrays, which will essentially apply our newly generated terrain.
+    void UpdateMesh(Vector3Int rootCoord) {
+        Mesh mesh = blocks[rootCoord.x, rootCoord.y, rootCoord.z].GetComponent<MeshFilter>().mesh;
+        Debug.Log(mesh);
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;

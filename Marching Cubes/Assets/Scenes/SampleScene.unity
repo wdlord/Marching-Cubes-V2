@@ -1478,6 +1478,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   basicCube: {fileID: 164230521}
   vertexSphere: {fileID: 25279791}
+  mesh_mat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
   evaluateTerrain: {fileID: 7200000, guid: 7b1c203124afadc4a88111fb5fcea3f9, type: 3}
   slicer: {fileID: 7200000, guid: 9faff128e8ce5324093ed566985245cd, type: 3}
   interpretCase: {fileID: 7200000, guid: 234f111a78d5f0444b87e399f0514a6b, type: 3}
