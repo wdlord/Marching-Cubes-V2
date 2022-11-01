@@ -108,64 +108,6 @@ public class MarchingCubesGPU : MonoBehaviour
     }
 
 
-    // Currently unused.
-    void ExtractVoxelData(RenderTexture source, Texture3D voxelTexture) {
-        RenderTexture[] rtSlices = new RenderTexture[Dimensions];               // 3D render texture is split into this array of 2D render textures
-        Texture2D[] slices = new Texture2D[Dimensions];                         // above 2D render textures are converted into 3D render textures
-
-        // turn big 3D RenderTexture into an array of 2D RenderTexture slices
-        for (int i = 0; i < Dimensions; i++) {
-            rtSlices[i] = Copy3DSliceToRenderTexture(source, i);
-        }
-
-        // convert those 2D RenderTexture slices into Texture2D slices
-        for (int i = 0; i < Dimensions; i++) {
-            slices[i] = ConvertFromRenderTexture(rtSlices[i]);
-        }
-
-        // transfer pixels from the 3D texture into outputPixels
-        var outputPixels = voxelTexture.GetPixels();
-
-        // I don't understand how this works
-        for (int k = 0; k < Dimensions; k++) {
-            var layerPixels = slices[k].GetPixels();
-            
-            for (int i = 0; i < Dimensions; i++) {
-                for (int j = 0; j < Dimensions; j++) {
-                    outputPixels[i + j * Dimensions + k * Dimensions * Dimensions] = layerPixels[i + j * Dimensions];
-                }
-            }
-        }
-
-        // apply the output pixels to the 3D texture
-        voxelTexture.SetPixels(outputPixels);
-        voxelTexture.Apply();
-    }
-
-
-    // Currently unused.
-    void March() {
-        var voxelData = voxelTexture.GetPixels();
-
-        // create the terrain
-        for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
-                    
-                    // the data is in the r channel, and is currently a float (ie 0.255). Converts that into an int (ie 255).
-                    int vertexCase = (int) (voxelData[i*Dimensions*Dimensions + j*Dimensions + k].r * 1000);
-                    
-                    // case 0 is above the curve, case 255 is below. In either case we do not draw any vertices there.
-                    if (vertexCase != 0 && vertexCase != 255) {
-                        var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                        cube.name = vertexCase.ToString();
-                    }
-                }
-            }
-        }
-    }
-
-
     // GetMeshData() applies the Marching Cubes algorithm to our calculated terrain data via a compute shader to get the polygon data.
     // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
     void GetMeshData(Vector3 rootCoord) {
@@ -215,32 +157,6 @@ public class MarchingCubesGPU : MonoBehaviour
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;
-    }
-
-
-    RenderTexture Copy3DSliceToRenderTexture(RenderTexture source, int layer) {
-        RenderTexture render = new RenderTexture(Dimensions, Dimensions, 0, renderTexFormat, RenderTextureReadWrite.Linear);
-        render.dimension = UnityEngine.Rendering.TextureDimension.Tex2D;
-        render.enableRandomWrite = true;
-        render.wrapMode = source.wrapMode;
-        render.Create();
-
-        int kernelIndex = slicer.FindKernel("CSMain");
-        slicer.SetTexture(kernelIndex, "voxels", source);
-        slicer.SetInt("layer", layer);
-        slicer.SetTexture(kernelIndex, "Result", render);
-        slicer.Dispatch(kernelIndex, Dimensions, Dimensions, 1); 
-        return render;
-    }
-
-
-    Texture2D ConvertFromRenderTexture(RenderTexture rt) {
-        Texture2D output = new Texture2D(rt.width, rt.height, texFormat, -1, true);
-        RenderTexture.active = rt;
-        output.ReadPixels(new Rect(0, 0, Dimensions, Dimensions), 0, 0);
-        output.Apply();
-
-        return output;
     }
 
 
