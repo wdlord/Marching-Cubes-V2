@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028378, g: 0.22571412, b: 0.30692285, a: 1}
+  m_IndirectSpecularColor: {r: 0.16794822, g: 0.19864851, b: 0.230408, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -716,14 +716,14 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 410087039}
-  m_LocalRotation: {x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}
+  m_LocalRotation: {x: 0.96348506, y: -0.018387757, z: 0.258165, w: 0.06862406}
   m_LocalPosition: {x: 0, y: 3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 1
-  m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+  m_LocalEulerAnglesHint: {x: 171.852, y: -30, z: 0}
 --- !u!114 &410087042
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1478,6 +1478,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   basicCube: {fileID: 164230521}
   vertexSphere: {fileID: 25279791}
+  mesh_mat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
   evaluateTerrain: {fileID: 7200000, guid: 7b1c203124afadc4a88111fb5fcea3f9, type: 3}
   slicer: {fileID: 7200000, guid: 9faff128e8ce5324093ed566985245cd, type: 3}
   interpretCase: {fileID: 7200000, guid: 234f111a78d5f0444b87e399f0514a6b, type: 3}

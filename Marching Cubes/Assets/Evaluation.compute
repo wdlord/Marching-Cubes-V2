@@ -1,16 +1,27 @@
 #pragma kernel CSMain
 
 RWTexture2DArray<float> terrainMap;     // output texture storing density function values.
+float3 rootCoord;
 
-// density function
+// example density function without noise.
 // tool to help visualize (must adjust values in this script):
 // http://www.math3d.org/
 float SampleSlope(float3 coord) {
-    coord = float3(coord.z, coord.x, coord.y);
-    // return pow((coord.x - 16) / 4, 2) - pow((coord.y - 16) / 4, 2) + 16 - coord.z;
-    return sin(coord.x) * sin(coord.y) + 16 - coord.z;
+    float eq_result;
+    coord = coord + rootCoord;                      // root coord represents the base of this block.
+    coord = float3(coord.z, coord.x, coord.y);      // re-orient the coordinates to correspond to correct ws orientation.
+    
+    // you can make complex functions to represent the terrain like so.
+    eq_result = (sin(0.07 * pow(coord.x, 2) + 0.07 * pow(coord.y, 2)));
+    eq_result += pow(coord.x / 4, 1.2) + pow(coord.y / 4, 1.2);
+
+    // above functions are calculated with z = xy style functions, this adjusts it to isolate the float result.
+    return eq_result + 16 - coord.z;
 }
 
+float Density(float3 coord) {
+    
+}
 
 [numthreads(11,11,3)]
 void CSMain (uint3 id : SV_DispatchThreadID)
