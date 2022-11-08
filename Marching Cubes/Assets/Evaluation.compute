@@ -46,6 +46,19 @@ float Unity_GradientNoise_float(float2 UV, float Scale)
     return unity_gradientNoise(UV * Scale) + 0.5;
 }
 
+float Perlin3D(float3 input, float Scale) {
+    float ab = unity_gradientNoise(float2(input.x, input.y) * Scale) + 0.5;
+    float bc = unity_gradientNoise(float2(input.y, input.z) * Scale) + 0.5;
+    float ac = unity_gradientNoise(float2(input.x, input.z) * Scale) + 0.5;
+
+    float ba = unity_gradientNoise(float2(input.y, input.x) * Scale) + 0.5;
+    float cb = unity_gradientNoise(float2(input.z, input.y) * Scale) + 0.5;
+    float ca = unity_gradientNoise(float2(input.z, input.x) * Scale) + 0.5;
+
+    float abc = ab + bc + ac + ba + cb + ca;
+    return abc / 6.0;
+}
+
 // actual density function.
 float Density(float3 coord) {
     coord = coord + rootCoord;     // root coord represents the base of this block.
@@ -55,11 +68,12 @@ float Density(float3 coord) {
     float2 noise_inputs = float2(coord.x/10, coord.z/10);
     float noise_val = 0;
 
-    noise_val += Unity_GradientNoise_float(noise_inputs, 3) * 2.5;
-    noise_val += Unity_GradientNoise_float(noise_inputs, 1) * 5;
-    noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.5) * 10;
-    noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.25) * 20;
-    noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.12) * 40;
+    // noise_val += Unity_GradientNoise_float(noise_inputs, 3) * 2.5;
+    // noise_val += Unity_GradientNoise_float(noise_inputs, 1) * 5;
+    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.5) * 10;
+    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.25) * 20;
+    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.12) * 40;
+    noise_val += Perlin3D(float3(coord.x/10, coord.y/10, coord.z/10), 1) * 10;
 
     density = noise_val;
 
