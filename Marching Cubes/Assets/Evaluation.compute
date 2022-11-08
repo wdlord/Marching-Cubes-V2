@@ -48,9 +48,10 @@ float Unity_GradientNoise_float(float2 UV, float Scale)
 
 // actual density function.
 float Density(float3 coord) {
-    coord = coord + rootCoord;                      // root coord represents the base of this block.
+    coord = coord + rootCoord;     // root coord represents the base of this block.
 
     float density;
+
     float2 noise_inputs = float2(coord.x/10, coord.z/10);
     float noise_val = 0;
 
@@ -62,7 +63,7 @@ float Density(float3 coord) {
 
     density = noise_val;
 
-    return density + 16 - coord.y;
+    return density - coord.y;
 }
 
 [numthreads(11,11,3)]
