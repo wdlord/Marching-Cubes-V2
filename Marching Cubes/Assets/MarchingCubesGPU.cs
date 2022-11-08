@@ -12,6 +12,7 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
     [SerializeField] Texture2D noiseTexture;
+    [SerializeField] int matrixSize;
 
     int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
     int[] triangleTable2;                                                   // triangle table converted to 1 dimensional array (for use in compute shader).
@@ -50,13 +51,12 @@ public class MarchingCubesGPU : MonoBehaviour
         triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
         polygons = new Polygon[vertices.Length/3];
         
-        int matrix_size = 3;
-        blocks = new GameObject[matrix_size, matrix_size, matrix_size];
+        blocks = new GameObject[matrixSize, matrixSize, matrixSize];
 
         // initialize the objects for terrain blocks
-        for (int i = 0; i < matrix_size; i++) {
-            for (int j = 0; j < matrix_size; j++) {
-                for (int k = 0; k < matrix_size; k++) {
+        for (int i = 0; i < matrixSize; i++) {
+            for (int j = 0; j < matrixSize; j++) {
+                for (int k = 0; k < matrixSize; k++) {
                     blocks[i, j, k] = new GameObject();
                     blocks[i, j, k].transform.position = new Vector3(i, j, k) * Dimensions;
                     blocks[i, j, k].AddComponent<MeshFilter>();
@@ -73,9 +73,9 @@ public class MarchingCubesGPU : MonoBehaviour
         AdaptTable();
 
         // generate terrain block by block
-        for (int i = 0; i < matrix_size; i++) {
-            for (int j = 0; j < matrix_size; j++) {
-                for (int k = 0; k < matrix_size; k++) {
+        for (int i = 0; i < matrixSize; i++) {
+            for (int j = 0; j < matrixSize; j++) {
+                for (int k = 0; k < matrixSize; k++) {
                     EvaluateTerrain(new Vector3(i, j, k) * Dimensions);
                     GetMeshData(new Vector3(i, j, k) * Dimensions);
                     UpdateMesh(new Vector3Int(i, j, k));
@@ -158,6 +158,7 @@ public class MarchingCubesGPU : MonoBehaviour
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;
+        mesh.RecalculateNormals();
     }
 
 

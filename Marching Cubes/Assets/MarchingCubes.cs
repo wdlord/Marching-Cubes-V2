@@ -71,8 +71,11 @@ public class MarchingCubes : MonoBehaviour
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
 
-        float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
+        // coord = new Vector3(coord.z, coord.x, coord.y);
+        float noise_val = Mathf.PerlinNoise(coord.x/10, coord.z/10) * 10;
+        float output = noise_val;
+        return output - coord.y + 16;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
     }
 
 
@@ -116,9 +119,9 @@ public class MarchingCubes : MonoBehaviour
             vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
             vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
 
-            triangles[bufferIndex + 0] = bufferIndex + 0;
+            triangles[bufferIndex + 0] = bufferIndex + 2;
             triangles[bufferIndex + 1] = bufferIndex + 1;
-            triangles[bufferIndex + 2] = bufferIndex + 2;
+            triangles[bufferIndex + 2] = bufferIndex + 0;
             
             bufferIndex += 3;
         }
