@@ -81,10 +81,17 @@ public class MarchingCubes : MonoBehaviour
     // helper visualization tool:
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
+        float offset = 100;
+        Vector3 noise_inputs = coord + Vector3.one * offset;
+        float frequency = 0.21f;
+        float scale = 35.1f;
 
         // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
         // coord = new Vector3(coord.z, coord.x, coord.y);
-        float noise_val = PerlinNoise3D(coord.x/10, coord.y/10, coord.z/10) * 15;
+
+        // float noise_val = Mathf.PerlinNoise(noise_inputs.x * frequency, noise_inputs.z * frequency) * scale;
+        float noise_val = PerlinNoise3D(noise_inputs.x * frequency, noise_inputs.z * frequency, noise_inputs.y * frequency) * scale;
+
         float output = noise_val;
         return output - coord.y + 5;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
     }

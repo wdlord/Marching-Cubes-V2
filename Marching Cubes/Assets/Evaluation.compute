@@ -19,7 +19,8 @@ float SampleSlope(float3 coord) {
     return eq_result + 16 - coord.z;
 }
 
-// gradient noise stuff
+
+// < generated from shadergraph node >
 float2 unity_gradientNoise_dir(float2 p)
 {
     p = p % 289;
@@ -29,6 +30,7 @@ float2 unity_gradientNoise_dir(float2 p)
     return normalize(float2(x - floor(x + 0.5), abs(x) - 0.5));
 }
 
+// < generated from shadergraph node >
 float unity_gradientNoise(float2 p)
 {
     float2 ip = floor(p);
@@ -41,11 +43,14 @@ float unity_gradientNoise(float2 p)
     return lerp(lerp(d00, d01, fp.y), lerp(d10, d11, fp.y), fp.x);
 }
 
+// < generated from shadergraph node >
 float Unity_GradientNoise_float(float2 UV, float Scale)
 {
     return unity_gradientNoise(UV * Scale) + 0.5;
 }
 
+
+// 3D Perlin Noise (close enough) function shared online commonly, modified to work with above gradient noise shader graph code.
 float Perlin3D(float3 input, float Scale) {
     float ab = unity_gradientNoise(float2(input.x, input.y) * Scale) + 0.5;
     float bc = unity_gradientNoise(float2(input.y, input.z) * Scale) + 0.5;
@@ -61,21 +66,21 @@ float Perlin3D(float3 input, float Scale) {
 
 // actual density function.
 float Density(float3 coord) {
+
+    // Coordinate manipulation.
     coord = coord + rootCoord;     // root coord represents the base of this block.
+    float offset = 100;             // for some reason noise close to 0, 0, 0 is only 2D.
+    float3 noise_inputs = coord + float3(offset, offset, offset);
 
-    float density;
+    // This is the value that will eventually be returned to represent the terrain.
+    float density = 0;
 
-    float2 noise_inputs = float2(coord.x/10, coord.z/10);
+    // Adding complexity with 3D Perlin Noise.
     float noise_val = 0;
-
-    // noise_val += Unity_GradientNoise_float(noise_inputs, 3) * 2.5;
-    // noise_val += Unity_GradientNoise_float(noise_inputs, 1) * 5;
-    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.5) * 10;
-    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.25) * 20;
-    // noise_val +=  Unity_GradientNoise_float(noise_inputs, 0.12) * 40;
-    noise_val += Perlin3D(float3(coord.x/10, coord.y/10, coord.z/10), 1) * 10;
-
-    density = noise_val;
+    noise_val += Perlin3D(noise_inputs, 0.04) * 201.2;
+    noise_val += Perlin3D(noise_inputs, 0.11) * 65.1;
+    noise_val += Perlin3D(noise_inputs, 1.1) * 10.4;
+    density += noise_val;
 
     return density - coord.y;
 }
