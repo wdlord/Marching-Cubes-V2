@@ -66,13 +66,34 @@ public class MarchingCubes : MonoBehaviour
     }
 
 
+    float PerlinNoise3D(float x, float y, float z) {
+        float xy = Mathf.PerlinNoise(x, y);
+        float xz = Mathf.PerlinNoise(x, z);
+        float yz = Mathf.PerlinNoise(y, z);
+        float yx = Mathf.PerlinNoise(y, x);
+        float zx = Mathf.PerlinNoise(z, x);
+        float zy = Mathf.PerlinNoise(z, y);
+    
+        return (xy + xz + yz + yx + zx + zy) / 6;
+    }
+
     // This is our simplistic density function.
     // helper visualization tool:
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
+        float offset = 100;
+        Vector3 noise_inputs = coord + Vector3.one * offset;
+        float frequency = 0.21f;
+        float scale = 35.1f;
 
-        float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        return output - coord.z;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
+        // coord = new Vector3(coord.z, coord.x, coord.y);
+
+        // float noise_val = Mathf.PerlinNoise(noise_inputs.x * frequency, noise_inputs.z * frequency) * scale;
+        float noise_val = PerlinNoise3D(noise_inputs.x * frequency, noise_inputs.z * frequency, noise_inputs.y * frequency) * scale;
+
+        float output = noise_val;
+        return output - coord.y + 5;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
     }
 
 
@@ -116,9 +137,9 @@ public class MarchingCubes : MonoBehaviour
             vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
             vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
 
-            triangles[bufferIndex + 0] = bufferIndex + 0;
+            triangles[bufferIndex + 0] = bufferIndex + 2;
             triangles[bufferIndex + 1] = bufferIndex + 1;
-            triangles[bufferIndex + 2] = bufferIndex + 2;
+            triangles[bufferIndex + 2] = bufferIndex + 0;
             
             bufferIndex += 3;
         }
