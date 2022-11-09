@@ -82,8 +82,6 @@ public class MarchingCubesGPU : MonoBehaviour
                 }
             }
         }
-
-        // UpdateMesh();   // TODO: mesh 3D array
     }
 
 
