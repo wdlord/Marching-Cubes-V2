@@ -5,8 +5,8 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter))]
 public class MarchingCubes : MonoBehaviour
 {
-    [SerializeField] GameObject basicCube;
-    [SerializeField] GameObject vertexSphere;
+    [SerializeField] Material meshMat;
+    [SerializeField] int matrixSize;
 
     int[][] triangleTable;
     int Dimensions = 32;
@@ -16,6 +16,7 @@ public class MarchingCubes : MonoBehaviour
     int[] triangles;
     Mesh mesh;
     int bufferIndex;
+    GameObject[,,] blocks;
 
     // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
     Vector3[] BaseCorners = {
@@ -49,23 +50,48 @@ public class MarchingCubes : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        terrainMap = new float[Dimensions + 1, Dimensions + 1, Dimensions + 1];
-        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the 3 x 12
-        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
+        // game objects representing the blocks, will contain things like the mesh for the given block.
+        blocks = new GameObject[matrixSize, matrixSize, matrixSize];
 
-        mesh = new Mesh();
-        GetComponent<MeshFilter>().mesh = mesh;
+        // initialize the objects for terrain blocks
+        for (int i = 0; i < matrixSize; i++) {
+            for (int j = 0; j < matrixSize; j++) {
+                for (int k = 0; k < matrixSize; k++) {
+                    blocks[i, j, k] = new GameObject();
+                    blocks[i, j, k].transform.position = new Vector3(i, j, k) * Dimensions;
+                    blocks[i, j, k].AddComponent<MeshFilter>();
+                    blocks[i, j, k].AddComponent<MeshRenderer>();
+                    blocks[i, j, k].GetComponent<MeshFilter>().mesh = new Mesh();
+                    blocks[i, j, k].GetComponent<MeshRenderer>().material = meshMat;
+                }
+            }
+        }
 
         LoadTable();
 
-        EvaluateBlock();
+        // generate terrain block by block
+        for (int i = 0; i < matrixSize; i++) {
+            for (int j = 0; j < matrixSize; j++) {
+                for (int k = 0; k < matrixSize; k++) {
+                    
+                    // set mesh specific variables that must be reset for each block.
+                    terrainMap = new float[Dimensions + 1, Dimensions + 1, Dimensions + 1];
+                    vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the x 12
+                    triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the x 12
+                    bufferIndex = 0;
 
-        MarchBlock();
-        
-        UpdateMesh();
+                    // calculate the density values and construct the meshes for the block.
+                    Vector3Int blockIndex = new Vector3Int(i, j, k);
+                    EvaluateBlock(blockIndex * Dimensions);
+                    MarchBlock();
+                    UpdateMesh(blockIndex);
+                }
+            }
+        }
     }
 
 
+    // This is a 3D Perlin Noise function commonly shared online.
     float PerlinNoise3D(float x, float y, float z) {
         float xy = Mathf.PerlinNoise(x, y);
         float xz = Mathf.PerlinNoise(x, z);
@@ -81,15 +107,21 @@ public class MarchingCubes : MonoBehaviour
     // helper visualization tool:
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
+
+        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.z - 16) / 4, 2);
+        float output = Mathf.Sin(0.25f * coord.x) * Mathf.Sin(0.25f * coord.z) * 2;
+
+        return output - coord.y + 16;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+    }
+
+
+    // The actual density function used to model the terrain.
+    float Density(Vector3 coord) {
         float offset = 100;
         Vector3 noise_inputs = coord + Vector3.one * offset;
         float frequency = 0.21f;
         float scale = 35.1f;
 
-        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        // coord = new Vector3(coord.z, coord.x, coord.y);
-
-        // float noise_val = Mathf.PerlinNoise(noise_inputs.x * frequency, noise_inputs.z * frequency) * scale;
         float noise_val = PerlinNoise3D(noise_inputs.x * frequency, noise_inputs.z * frequency, noise_inputs.y * frequency) * scale;
 
         float output = noise_val;
@@ -97,15 +129,30 @@ public class MarchingCubes : MonoBehaviour
     }
 
 
-    // Evaluate the density function for each voxel in the block to get the voxel cases.
-    // Results stored in voxels array.
-    void EvaluateBlock() {
+    // Evaluate the density function at all corners for each voxel in the block to get the voxel cases.
+    // Results stored in terrainMap array.
+    void EvaluateBlock(Vector3Int rootCoord) {
+
+        for (int i = 0; i < Dimensions + 1; i++) {
+            for (int j = 0; j < Dimensions + 1; j++) {
+                for (int k = 0; k < Dimensions + 1; k++) {
+
+                    // evaluate and store each corner so we can evaluate the voxel cases later.
+                    terrainMap[i, j, k] = Density(new Vector3Int(i, j, k) + rootCoord);
+                }
+            }
+        }
+    }
+
+
+    // The Marching part of Marching Cubes.
+    void MarchBlock() {
+
         for (int i = 0; i < Dimensions; i++) {
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
-
-                    // evaluate and store each corner so we can evaluate the voxel cases later.
-                    terrainMap[i, j, k] = SampleSlope(new Vector3Int(i, j, k));
+                    
+                    InterpretCase(new Vector3Int(i, j, k));
                 }
             }
         }
@@ -116,32 +163,40 @@ public class MarchingCubes : MonoBehaviour
     void InterpretCase(Vector3Int coord) {
 
         int vertexCase = 0;
+        Vector3Int corner;
 
-        // Generates the vertex case by evaluating each corner of the voxel against the density function.
+        // Generates the vertex case by evaluating each corner of the voxel against the saved density function.
             // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
             // EXAMPLE: Let corners 0, 3, 7 be greater than 0.
             //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
             //      resulting case is decimal 137.
             for (int i = 0; i < BaseCorners.Length; i++) {
-                if (SampleSlope(coord + BaseCorners[i]) > 0) {
+
+                corner = coord + Vector3Int.FloorToInt(BaseCorners[i]);
+
+                if (terrainMap[corner.x, corner.y, corner.z] > 0) {
                     vertexCase |= 1 << i;
                 }
             }
+        
+        // use vertex case to skip unnecessary voxels.
+        if (vertexCase != 0 && vertexCase != 255) {
 
-        // works through the triangle table entry which tells which order to draw the triangles in.
-        // works in groups of 3's to go one triangle at a time.
-        // EXAMPLE: Case 3 - { 1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-        // Build 2 triangles by connecting edges 1, 8, 3 and edges 9, 8, 1 on the voxel.
-        for (int i = 0; triangleTable[vertexCase][i] != -1; i += 3) {
-            vertices[bufferIndex + 0] = Interpolate(triangleTable[vertexCase][i + 2], coord);
-            vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
-            vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
+            // works through the triangle table entry which tells which order to draw the triangles in.
+            // works in groups of 3's to go one triangle at a time.
+            // EXAMPLE: Case 3 - { 1, 8, 3, 9, 8, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+            // Build 2 triangles by connecting edges 1, 8, 3 and edges 9, 8, 1 on the voxel.
+            for (int i = 0; triangleTable[vertexCase][i] != -1; i += 3) {
+                vertices[bufferIndex + 0] = Interpolate(triangleTable[vertexCase][i + 2], coord);
+                vertices[bufferIndex + 1] = Interpolate(triangleTable[vertexCase][i + 1], coord);
+                vertices[bufferIndex + 2] = Interpolate(triangleTable[vertexCase][i + 0], coord);
 
-            triangles[bufferIndex + 0] = bufferIndex + 2;
-            triangles[bufferIndex + 1] = bufferIndex + 1;
-            triangles[bufferIndex + 2] = bufferIndex + 0;
-            
-            bufferIndex += 3;
+                triangles[bufferIndex + 0] = bufferIndex + 2;
+                triangles[bufferIndex + 1] = bufferIndex + 1;
+                triangles[bufferIndex + 2] = bufferIndex + 0;
+                
+                bufferIndex += 3;
+            }
         }
     }
 
@@ -150,15 +205,15 @@ public class MarchingCubes : MonoBehaviour
     Vector3 Interpolate(int edge, Vector3Int coord) {
         
         float point1, point2;
-        Vector3 cornerA, cornerB;
+        Vector3Int cornerA, cornerB;
 
         // Get the vertex pair corresponding to the given edge.
-        cornerA = coord + BaseCorners[edgeTable[edge].x];
-        cornerB = coord + BaseCorners[edgeTable[edge].y];
+        cornerA = Vector3Int.FloorToInt(coord + BaseCorners[edgeTable[edge].x]);
+        cornerB = Vector3Int.FloorToInt(coord + BaseCorners[edgeTable[edge].y]);
 
         // Get the density values at those two points.
-        point1 = SampleSlope(cornerA);
-        point2 = SampleSlope(cornerB);
+        point1 = terrainMap[cornerA.x, cornerA.y, cornerA.z];
+        point2 = terrainMap[cornerB.x, cornerB.y, cornerB.z];
 
         // points need to be swapped depending on which point (1 or 2) is greater than 0 (above the surface).
         // its the difference of 80% between A and B vs 80% between B and A.
@@ -169,26 +224,9 @@ public class MarchingCubes : MonoBehaviour
     }
 
 
-    // The Marching part of Marching Cubes.
-    void MarchBlock() {
-
-        for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
-
-                    // // create a cube to visualize the terrain surface
-                    // var cube = Instantiate(basicCube, new Vector3(i, j, k), Quaternion.identity);
-                    // cube.name = voxels[i, j, k].VertexCase.ToString();
-                    
-                    InterpretCase(new Vector3Int(i, j, k));
-                }
-            }
-        }
-    }
-
-
     // Updates the mesh for this voxel with our vertices and triangles arrays.
-    void UpdateMesh() {
+    void UpdateMesh(Vector3Int rootCoord) {
+        Mesh mesh = blocks[rootCoord.x, rootCoord.y, rootCoord.z].GetComponent<MeshFilter>().mesh;
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;

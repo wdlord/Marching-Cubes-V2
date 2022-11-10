@@ -1734,13 +1734,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996008459}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 467f7208980b6cd4686e361c2f05befe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  basicCube: {fileID: 164230521}
-  vertexSphere: {fileID: 25279791}
+  meshMat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
+  matrixSize: 3
 --- !u!4 &1996008461
 Transform:
   m_ObjectHideFlags: 0
@@ -1763,18 +1763,14 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996008459}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 101ccd4f513171d42b684157e4e3b7dd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  basicCube: {fileID: 164230521}
-  vertexSphere: {fileID: 25279791}
-  mesh_mat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
+  meshMat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
   evaluateTerrain: {fileID: 7200000, guid: 7b1c203124afadc4a88111fb5fcea3f9, type: 3}
-  slicer: {fileID: 7200000, guid: 9faff128e8ce5324093ed566985245cd, type: 3}
   interpretCase: {fileID: 7200000, guid: 234f111a78d5f0444b87e399f0514a6b, type: 3}
-  noiseTexture: {fileID: 0}
   matrixSize: 5
   renderTexture: {fileID: 0}
 --- !u!33 &1996008463
