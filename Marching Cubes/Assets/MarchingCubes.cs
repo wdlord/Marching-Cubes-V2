@@ -5,10 +5,8 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter))]
 public class MarchingCubes : MonoBehaviour
 {
-    [SerializeField] GameObject basicCube;
-    [SerializeField] GameObject vertexSphere;
-    [SerializeField] int matrixSize;
     [SerializeField] Material meshMat;
+    [SerializeField] int matrixSize;
 
     int[][] triangleTable;
     int Dimensions = 32;
@@ -76,14 +74,16 @@ public class MarchingCubes : MonoBehaviour
             for (int j = 0; j < matrixSize; j++) {
                 for (int k = 0; k < matrixSize; k++) {
                     
+                    // set mesh specific variables that must be reset for each block.
                     terrainMap = new float[Dimensions + 1, Dimensions + 1, Dimensions + 1];
                     vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the x 12
                     triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the x 12
                     bufferIndex = 0;
 
+                    // calculate the density values and construct the meshes for the block.
                     Vector3Int blockIndex = new Vector3Int(i, j, k);
                     EvaluateBlock(blockIndex * Dimensions);
-                    MarchBlock(blockIndex * Dimensions);
+                    MarchBlock();
                     UpdateMesh(blockIndex);
                 }
             }
@@ -146,13 +146,13 @@ public class MarchingCubes : MonoBehaviour
 
 
     // The Marching part of Marching Cubes.
-    void MarchBlock(Vector3 rootCoord) {
+    void MarchBlock() {
 
         for (int i = 0; i < Dimensions; i++) {
             for (int j = 0; j < Dimensions; j++) {
                 for (int k = 0; k < Dimensions; k++) {
                     
-                    InterpretCase(new Vector3Int(i, j, k), rootCoord);
+                    InterpretCase(new Vector3Int(i, j, k));
                 }
             }
         }
@@ -160,7 +160,7 @@ public class MarchingCubes : MonoBehaviour
 
 
     // Uses Triangle Table lookup to create the geometry data for a given voxel.
-    void InterpretCase(Vector3Int coord, Vector3 rootCoord) {
+    void InterpretCase(Vector3Int coord) {
 
         int vertexCase = 0;
         Vector3Int corner;

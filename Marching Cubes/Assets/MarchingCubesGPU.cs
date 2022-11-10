@@ -5,13 +5,9 @@ using UnityEngine;
 [RequireComponent(typeof(MeshFilter))]
 public class MarchingCubesGPU : MonoBehaviour
 {
-    [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
-    [SerializeField] GameObject vertexSphere;
     [SerializeField] Material meshMat;
     [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
-    [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
-    [SerializeField] Texture2D noiseTexture;
     [SerializeField] int matrixSize;
 
     int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
@@ -77,7 +73,7 @@ public class MarchingCubesGPU : MonoBehaviour
             for (int j = 0; j < matrixSize; j++) {
                 for (int k = 0; k < matrixSize; k++) {
                     EvaluateTerrain(new Vector3(i, j, k) * Dimensions);
-                    GetMeshData(new Vector3(i, j, k) * Dimensions);
+                    GetMeshData();
                     UpdateMesh(new Vector3Int(i, j, k));
                 }
             }
@@ -109,7 +105,7 @@ public class MarchingCubesGPU : MonoBehaviour
 
     // GetMeshData() applies the Marching Cubes algorithm to our calculated terrain data via a compute shader to get the polygon data.
     // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
-    void GetMeshData(Vector3 rootCoord) {
+    void GetMeshData() {
 
         // initialize buffers needed in the shader
         int polygonSize = sizeof(float) * 9;
