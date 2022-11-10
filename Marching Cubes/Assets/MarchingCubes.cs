@@ -66,6 +66,7 @@ public class MarchingCubes : MonoBehaviour
     }
 
 
+    // This is a 3D Perlin Noise function commonly shared online.
     float PerlinNoise3D(float x, float y, float z) {
         float xy = Mathf.PerlinNoise(x, y);
         float xz = Mathf.PerlinNoise(x, z);
@@ -81,15 +82,20 @@ public class MarchingCubes : MonoBehaviour
     // helper visualization tool:
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
+
+        float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.z - 16) / 4, 2);
+
+        return output - coord.y + 16;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+    }
+
+
+    // The actual density function used to model the terrain.
+    float Density(Vector3 coord) {
         float offset = 100;
         Vector3 noise_inputs = coord + Vector3.one * offset;
         float frequency = 0.21f;
         float scale = 35.1f;
 
-        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.y - 16) / 4, 2) + 16;
-        // coord = new Vector3(coord.z, coord.x, coord.y);
-
-        // float noise_val = Mathf.PerlinNoise(noise_inputs.x * frequency, noise_inputs.z * frequency) * scale;
         float noise_val = PerlinNoise3D(noise_inputs.x * frequency, noise_inputs.z * frequency, noise_inputs.y * frequency) * scale;
 
         float output = noise_val;
@@ -97,15 +103,15 @@ public class MarchingCubes : MonoBehaviour
     }
 
 
-    // Evaluate the density function for each voxel in the block to get the voxel cases.
-    // Results stored in voxels array.
+    // Evaluate the density function at all corners for each voxel in the block to get the voxel cases.
+    // Results stored in terrainMap array.
     void EvaluateBlock() {
-        for (int i = 0; i < Dimensions; i++) {
-            for (int j = 0; j < Dimensions; j++) {
-                for (int k = 0; k < Dimensions; k++) {
+        for (int i = 0; i < Dimensions + 1; i++) {
+            for (int j = 0; j < Dimensions + 1; j++) {
+                for (int k = 0; k < Dimensions + 1; k++) {
 
                     // evaluate and store each corner so we can evaluate the voxel cases later.
-                    terrainMap[i, j, k] = SampleSlope(new Vector3Int(i, j, k));
+                    terrainMap[i, j, k] = Density(new Vector3Int(i, j, k));
                 }
             }
         }
@@ -116,6 +122,7 @@ public class MarchingCubes : MonoBehaviour
     void InterpretCase(Vector3Int coord) {
 
         int vertexCase = 0;
+        Vector3Int corner;
 
         // Generates the vertex case by evaluating each corner of the voxel against the density function.
             // Each vertex is evaluated in order, and we use bitwise concatenation to efficiently construct the case number.
@@ -123,7 +130,10 @@ public class MarchingCubes : MonoBehaviour
             //      bitwise concatenation = 10001001 (leftmost bit is 7, middle-ish one is 3, rightmost one is 0).
             //      resulting case is decimal 137.
             for (int i = 0; i < BaseCorners.Length; i++) {
-                if (SampleSlope(coord + BaseCorners[i]) > 0) {
+
+                corner = coord + Vector3Int.FloorToInt(BaseCorners[i]);
+
+                if (terrainMap[corner.x, corner.y, corner.z] > 0) {
                     vertexCase |= 1 << i;
                 }
             }
@@ -150,15 +160,15 @@ public class MarchingCubes : MonoBehaviour
     Vector3 Interpolate(int edge, Vector3Int coord) {
         
         float point1, point2;
-        Vector3 cornerA, cornerB;
+        Vector3Int cornerA, cornerB;
 
         // Get the vertex pair corresponding to the given edge.
-        cornerA = coord + BaseCorners[edgeTable[edge].x];
-        cornerB = coord + BaseCorners[edgeTable[edge].y];
+        cornerA = Vector3Int.FloorToInt(coord + BaseCorners[edgeTable[edge].x]);
+        cornerB = Vector3Int.FloorToInt(coord + BaseCorners[edgeTable[edge].y]);
 
         // Get the density values at those two points.
-        point1 = SampleSlope(cornerA);
-        point2 = SampleSlope(cornerB);
+        point1 = terrainMap[cornerA.x, cornerA.y, cornerA.z];
+        point2 = terrainMap[cornerB.x, cornerB.y, cornerB.z];
 
         // points need to be swapped depending on which point (1 or 2) is greater than 0 (above the surface).
         // its the difference of 80% between A and B vs 80% between B and A.
