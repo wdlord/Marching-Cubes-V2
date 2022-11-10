@@ -7,7 +7,7 @@ public class MarchingCubesGPU : MonoBehaviour
 {
     [SerializeField] GameObject basicCube;              // used for visualization of the terrain surface as blocks instead of a vertex configuration.
     [SerializeField] GameObject vertexSphere;
-    [SerializeField] Material mesh_mat;
+    [SerializeField] Material meshMat;
     [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader slicer;              // helper shader used to convert the RenderTexture into Texture2D's and 3D's so we can read the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
@@ -62,7 +62,7 @@ public class MarchingCubesGPU : MonoBehaviour
                     blocks[i, j, k].AddComponent<MeshFilter>();
                     blocks[i, j, k].AddComponent<MeshRenderer>();
                     blocks[i, j, k].GetComponent<MeshFilter>().mesh = new Mesh();
-                    blocks[i, j, k].GetComponent<MeshRenderer>().material = mesh_mat;
+                    blocks[i, j, k].GetComponent<MeshRenderer>().material = meshMat;
                 }
             }
         }
@@ -152,7 +152,6 @@ public class MarchingCubesGPU : MonoBehaviour
     // Updates the mesh for this voxel with our 'vertices' and 'triangles' arrays, which will essentially apply our newly generated terrain.
     void UpdateMesh(Vector3Int rootCoord) {
         Mesh mesh = blocks[rootCoord.x, rootCoord.y, rootCoord.z].GetComponent<MeshFilter>().mesh;
-        Debug.Log(mesh);
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;
