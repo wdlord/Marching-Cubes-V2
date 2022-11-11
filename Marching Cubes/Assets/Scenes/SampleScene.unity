@@ -589,7 +589,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   m_LocalRotation: {x: 0.19936788, y: 0, z: 0, w: 0.97992474}
-  m_LocalPosition: {x: 56, y: 92, z: -33}
+  m_LocalPosition: {x: 21, y: 43, z: -33}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1734,7 +1734,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996008459}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 467f7208980b6cd4686e361c2f05befe, type: 3}
   m_Name: 
@@ -1763,7 +1763,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996008459}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 101ccd4f513171d42b684157e4e3b7dd, type: 3}
   m_Name: 
@@ -1771,7 +1771,9 @@ MonoBehaviour:
   meshMat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
   evaluateTerrain: {fileID: 7200000, guid: 7b1c203124afadc4a88111fb5fcea3f9, type: 3}
   interpretCase: {fileID: 7200000, guid: 234f111a78d5f0444b87e399f0514a6b, type: 3}
-  matrixSize: 5
+  matrixSize: 2
+  speed: 0.2
+  updateRate: 30
   renderTexture: {fileID: 0}
 --- !u!33 &1996008463
 MeshFilter:
