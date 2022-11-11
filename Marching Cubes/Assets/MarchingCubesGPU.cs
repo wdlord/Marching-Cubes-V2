@@ -136,9 +136,11 @@ public class MarchingCubesGPU : MonoBehaviour
         cornerBuffer.SetData(BaseCorners);
 
         // set variables that don't change between shader runs.
+        interpretCase.SetTexture(0, "terrainMap", renderTexture);
         interpretCase.SetBuffer(0, "triangleTable", triTableBuffer);
         interpretCase.SetBuffer(0, "edgeTable", edgeBuffer);
         interpretCase.SetBuffer(0, "baseCorners", cornerBuffer);
+        interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
 
         evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
     }
@@ -147,9 +149,9 @@ public class MarchingCubesGPU : MonoBehaviour
     // EvaluateTerrain() evaluates the terrain data for an entire block by dispatching a compute shader.
     void EvaluateTerrain(Vector3 rootCoord) {
 
-        // Dispatch shader
         evaluateTerrain.SetFloats("rootCoord", new float[] {rootCoord.x, rootCoord.y, rootCoord.z});
 
+        // this will fill the renderTexture with the correct density values.
         evaluateTerrain.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
     }
 
@@ -158,19 +160,9 @@ public class MarchingCubesGPU : MonoBehaviour
     // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
     void GetMeshData() {
 
-        // TODO: figure out how to replace this.
-        // initialize buffers needed in the shader
-        int polygonSize = sizeof(float) * 9;
-        polygonBuffer = new ComputeBuffer(vertices.Length/3, polygonSize, ComputeBufferType.Append);    // this one changes and must be cleared before being updated.
-
-        // polygonBuffer.SetData(emptyPolyBuffer);     // must reset the polygon buffer every time to prevent ghost polygons.
-
-        // set variables in shader.
-        interpretCase.SetTexture(0, "terrainMap", renderTexture);
-        interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
-        interpretCase.SetBuffer(0, "triangleTable", triTableBuffer);
-        interpretCase.SetBuffer(0, "edgeTable", edgeBuffer);
-        interpretCase.SetBuffer(0, "baseCorners", cornerBuffer);
+        // reset polygon buffer for a new run.
+        polygonBuffer.SetData(emptyPolyBuffer);
+        polygonBuffer.SetCounterValue(0);       // this is ComputeBufferType.Append, meaning its treated like a stack. We must reset the counter as well.
 
         // Dispatch shader.
         interpretCase.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);
