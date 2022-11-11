@@ -7,6 +7,8 @@ public class MarchingCubes : MonoBehaviour
 {
     [SerializeField] Material meshMat;
     [SerializeField] int matrixSize;
+    [SerializeField] int updateRate;
+    [SerializeField] float speed;
 
     int[][] triangleTable;
     int Dimensions = 32;
@@ -17,6 +19,8 @@ public class MarchingCubes : MonoBehaviour
     Mesh mesh;
     int bufferIndex;
     GameObject[,,] blocks;
+    Vector3 totalDistance;
+    int count;
 
     // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
     Vector3[] BaseCorners = {
@@ -90,6 +94,36 @@ public class MarchingCubes : MonoBehaviour
         }
     }
 
+    void Update() {
+
+        count++;
+
+        if (count % updateRate == 0) {
+
+            totalDistance += new Vector3(speed, 0, speed);
+
+            // generate terrain block by block
+            for (int i = 0; i < matrixSize; i++) {
+                for (int j = 0; j < matrixSize; j++) {
+                    for (int k = 0; k < matrixSize; k++) {
+                        
+                        // set mesh specific variables that must be reset for each block.
+                        terrainMap = new float[Dimensions + 1, Dimensions + 1, Dimensions + 1];
+                        vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the x 12
+                        triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the x 12
+                        bufferIndex = 0;
+
+                        // calculate the density values and construct the meshes for the block.
+                        Vector3Int blockIndex = new Vector3Int(i, j, k);
+                        EvaluateBlock(blockIndex * Dimensions + totalDistance);
+                        MarchBlock();
+                        UpdateMesh(blockIndex);
+                    }
+                }
+            }
+        }
+    }
+
 
     // This is a 3D Perlin Noise function commonly shared online.
     float PerlinNoise3D(float x, float y, float z) {
@@ -131,14 +165,14 @@ public class MarchingCubes : MonoBehaviour
 
     // Evaluate the density function at all corners for each voxel in the block to get the voxel cases.
     // Results stored in terrainMap array.
-    void EvaluateBlock(Vector3Int rootCoord) {
+    void EvaluateBlock(Vector3 rootCoord) {
 
         for (int i = 0; i < Dimensions + 1; i++) {
             for (int j = 0; j < Dimensions + 1; j++) {
                 for (int k = 0; k < Dimensions + 1; k++) {
 
                     // evaluate and store each corner so we can evaluate the voxel cases later.
-                    terrainMap[i, j, k] = Density(new Vector3Int(i, j, k) + rootCoord);
+                    terrainMap[i, j, k] = Density(new Vector3(i, j, k) + rootCoord);
                 }
             }
         }
