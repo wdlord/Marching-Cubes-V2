@@ -9,6 +9,8 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
     [SerializeField] int matrixSize;
+    [SerializeField] float speed;
+    [SerializeField] int updateRate = 30;
 
     int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
     int[] triangleTable2;                                                   // triangle table converted to 1 dimensional array (for use in compute shader).
@@ -26,6 +28,8 @@ public class MarchingCubesGPU : MonoBehaviour
     Vector3[] vertices;
     int[] triangles;
     GameObject[,,] blocks;
+    Vector3 totalDistance;
+    int count;  // TEMP
 
     public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
     Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
@@ -38,6 +42,7 @@ public class MarchingCubesGPU : MonoBehaviour
     };
 
     Polygon[] polygons;
+    Polygon[] emptyPolyBuffer;
 
     // Start is called before the first frame update
     void Start()
@@ -46,8 +51,11 @@ public class MarchingCubesGPU : MonoBehaviour
         vertices = new Vector3[3 * 12 * (Dimensions * Dimensions * Dimensions)];    // no idea why the 3 x 12
         triangles = new int[3 * 12 * (Dimensions * Dimensions * Dimensions)];       // no idea why the 3 x 12
         polygons = new Polygon[vertices.Length/3];
+        emptyPolyBuffer = new Polygon[vertices.Length/3];
         
         blocks = new GameObject[matrixSize, matrixSize, matrixSize];
+
+        totalDistance = Vector3.zero;
 
         // initialize the objects for terrain blocks
         for (int i = 0; i < matrixSize; i++) {
@@ -67,6 +75,7 @@ public class MarchingCubesGPU : MonoBehaviour
         LoadBaseCorners();
         LoadEdgeTable();
         AdaptTable();
+        InitializeShaderVariables();
 
         // generate terrain block by block
         for (int i = 0; i < matrixSize; i++) {
@@ -80,11 +89,30 @@ public class MarchingCubesGPU : MonoBehaviour
         }
     }
 
+    void Update() {
 
-    // EvaluateTerrain() evaluates the terrain data for an entire block by dispatching a compute shader.
-    void EvaluateTerrain(Vector3 rootCoord) {
+        count++;
 
-        // set renderTexture attributes. This renderTexture will hold the voxel case information.
+        if (count % updateRate == 0) {
+
+            totalDistance += new Vector3(speed, 0, 0);
+
+            // generate terrain block by block
+            for (int i = 0; i < matrixSize; i++) {
+                for (int j = 0; j < matrixSize; j++) {
+                    for (int k = 0; k < matrixSize; k++) {
+                        EvaluateTerrain(new Vector3(i, j, k) * Dimensions + totalDistance);
+                        GetMeshData();
+                        UpdateMesh(new Vector3Int(i, j, k));
+                    }
+                }
+            }
+        }
+    }
+
+    void InitializeShaderVariables() {
+
+        // set renderTexture attributes. This renderTexture will hold the voxel case information (Density values).
         renderTexture = new RenderTexture(33, 33, 0, renderTexFormat, RenderTextureReadWrite.Linear);
 
         renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
@@ -95,21 +123,9 @@ public class MarchingCubesGPU : MonoBehaviour
 
         Graphics.SetRandomWriteTarget(0, renderTexture);
 
-        // Dispatch shader
-        evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
-        evaluateTerrain.SetFloats("rootCoord", new float[] {rootCoord.x, rootCoord.y, rootCoord.z});
-
-        evaluateTerrain.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
-    }
-
-
-    // GetMeshData() applies the Marching Cubes algorithm to our calculated terrain data via a compute shader to get the polygon data.
-    // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
-    void GetMeshData() {
-
         // initialize buffers needed in the shader
         int polygonSize = sizeof(float) * 9;
-        polygonBuffer = new ComputeBuffer(vertices.Length/3, polygonSize, ComputeBufferType.Append);
+        polygonBuffer = new ComputeBuffer(vertices.Length/3, polygonSize, ComputeBufferType.Append);    // this one changes and must be cleared before being updated.
         triTableBuffer = new ComputeBuffer(triangleTable2.Length, sizeof(int));
         edgeBuffer = new ComputeBuffer(edgeTable.Length, sizeof(int) * 3);
         cornerBuffer = new ComputeBuffer(BaseCorners.Length, sizeof(int) * 3);
@@ -119,12 +135,34 @@ public class MarchingCubesGPU : MonoBehaviour
         edgeBuffer.SetData(edgeTable);
         cornerBuffer.SetData(BaseCorners);
 
-        // set variables in shader.
+        // set variables that don't change between shader runs.
         interpretCase.SetTexture(0, "terrainMap", renderTexture);
         interpretCase.SetBuffer(0, "triangleTable", triTableBuffer);
         interpretCase.SetBuffer(0, "edgeTable", edgeBuffer);
         interpretCase.SetBuffer(0, "baseCorners", cornerBuffer);
         interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
+
+        evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
+    }
+
+
+    // EvaluateTerrain() evaluates the terrain data for an entire block by dispatching a compute shader.
+    void EvaluateTerrain(Vector3 rootCoord) {
+
+        evaluateTerrain.SetFloats("rootCoord", new float[] {rootCoord.x, rootCoord.y, rootCoord.z});
+
+        // this will fill the renderTexture with the correct density values.
+        evaluateTerrain.Dispatch(0, 33/11, 33/11, 33/3);    // the last 3 arguments represent the thread group sizes of the shader.
+    }
+
+
+    // GetMeshData() applies the Marching Cubes algorithm to our calculated terrain data via a compute shader to get the polygon data.
+    // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
+    void GetMeshData() {
+
+        // reset polygon buffer for a new run.
+        polygonBuffer.SetData(emptyPolyBuffer);
+        polygonBuffer.SetCounterValue(0);       // this is ComputeBufferType.Append, meaning its treated like a stack. We must reset the counter as well.
 
         // Dispatch shader.
         interpretCase.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);
