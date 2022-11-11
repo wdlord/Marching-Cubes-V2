@@ -112,7 +112,7 @@ public class MarchingCubesGPU : MonoBehaviour
 
     void InitializeShaderVariables() {
 
-        // set renderTexture attributes. This renderTexture will hold the voxel case information.
+        // set renderTexture attributes. This renderTexture will hold the voxel case information (Density values).
         renderTexture = new RenderTexture(33, 33, 0, renderTexFormat, RenderTextureReadWrite.Linear);
 
         renderTexture.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
