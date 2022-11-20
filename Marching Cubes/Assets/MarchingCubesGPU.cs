@@ -14,6 +14,7 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] int matrixSize;
     [SerializeField] float speed;
     [SerializeField] int updateInterval = 30;
+    [SerializeField] bool dynamic = false;
 
     int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
     int[] triangleTable2;                                                   // triangle table converted to 1 dimensional array (for use in compute shader).
@@ -167,33 +168,36 @@ public class MarchingCubesGPU : MonoBehaviour
 
         count++;
 
-        if (count % updateInterval == 0) {
+        if (dynamic) {
 
-            totalDistance += new Vector3(speed, 0, speed);
+            if (count % updateInterval == 0) {
 
-            // generate terrain block by block
-            for (int i = 0; i < matrixSize; i++) {
-                for (int j = 0; j < matrixSize; j++) {
-                    for (int k = 0; k < matrixSize; k++) {
+                totalDistance += new Vector3(speed, 0, speed);
 
-                        timer1.Restart();
-                        EvaluateTerrain(new Vector3(i, j, k) * Dimensions + totalDistance);
-                        timer1.Stop();
+                // generate terrain block by block
+                for (int i = 0; i < matrixSize; i++) {
+                    for (int j = 0; j < matrixSize; j++) {
+                        for (int k = 0; k < matrixSize; k++) {
 
-                        GetMeshData();
+                            timer1.Restart();
+                            EvaluateTerrain(new Vector3(i, j, k) * Dimensions + totalDistance);
+                            timer1.Stop();
 
-                        timer4.Restart();
-                        UpdateMesh(new Vector3Int(i, j, k));
-                        timer4.Stop();
+                            GetMeshData();
 
-                        // GetMeshData2();
-                        // UpdateMeshVertices(new Vector3Int(i, j, k));
+                            timer4.Restart();
+                            UpdateMesh(new Vector3Int(i, j, k));
+                            timer4.Stop();
 
-                        totalUpdates += 1;
-                        CalculationTime += timer1.Elapsed;
-                        ConstructionTime += timer2.Elapsed;
-                        StreamTime += timer3.Elapsed;
-                        UpdateTime += timer4.Elapsed;
+                            // GetMeshData2();
+                            // UpdateMeshVertices(new Vector3Int(i, j, k));
+
+                            totalUpdates += 1;
+                            CalculationTime += timer1.Elapsed;
+                            ConstructionTime += timer2.Elapsed;
+                            StreamTime += timer3.Elapsed;
+                            UpdateTime += timer4.Elapsed;
+                        }
                     }
                 }
             }

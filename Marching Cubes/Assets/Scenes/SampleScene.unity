@@ -589,7 +589,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   m_LocalRotation: {x: 0.33380687, y: 0, z: 0, w: 0.94264156}
-  m_LocalPosition: {x: 15, y: 37, z: -12}
+  m_LocalPosition: {x: 16, y: 35, z: -15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1770,13 +1770,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 101ccd4f513171d42b684157e4e3b7dd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  meshMat: {fileID: 2100000, guid: a5db3819593c1cf4789c3a40c6252da2, type: 2}
+  meshMat: {fileID: 2100000, guid: f51fabf59fbf9c044ad2285c1b0c82df, type: 2}
   evaluateTerrain: {fileID: 7200000, guid: 7b1c203124afadc4a88111fb5fcea3f9, type: 3}
   interpretCase: {fileID: 7200000, guid: 234f111a78d5f0444b87e399f0514a6b, type: 3}
   updateVertices: {fileID: 7200000, guid: 828a438d363271a42920b0eeef3b67fc, type: 3}
-  matrixSize: 1
-  speed: 0.5
+  matrixSize: 5
+  speed: 0.05
   updateInterval: 1
+  dynamic: 0
   renderTexture: {fileID: 0}
 --- !u!33 &1996008463
 MeshFilter:

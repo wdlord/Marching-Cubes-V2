@@ -85,13 +85,13 @@ float SampleSlope(float3 coord) {
     float output;
 
     // adjustable 3D sin function.
-    // output = my_sin(coord, 0.25, 2);
+    output = my_sin(coord, 0.25, 2);
     
     // ripple function.
     // output = ripple(coord, 0.05, 1);
 
     // complex noise function.
-    output = complex_noise(coord) - 55;
+    // output = complex_noise(coord) - 55;
 
     return output + 16 - coord.y;
 }
@@ -121,6 +121,6 @@ float Density(float3 coord) {
 [numthreads(11,11,3)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-    terrainMap[id.xyz] = SampleSlope(float3(id.xyz));
-    // terrainMap[id.xyz] = Density(float3(id.xyz));
+    // terrainMap[id.xyz] = SampleSlope(float3(id.xyz));
+    terrainMap[id.xyz] = Density(float3(id.xyz));
 }
