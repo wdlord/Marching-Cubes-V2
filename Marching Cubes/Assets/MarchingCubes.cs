@@ -1,14 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+ using System.Diagnostics;
+ using Debug=UnityEngine.Debug;
 
 [RequireComponent(typeof(MeshFilter))]
 public class MarchingCubes : MonoBehaviour
 {
     [SerializeField] Material meshMat;
     [SerializeField] int matrixSize;
-    [SerializeField] int updateRate;
     [SerializeField] float speed;
+    [SerializeField] int updateInterval;
 
     int[][] triangleTable;
     int Dimensions = 32;
@@ -21,6 +23,16 @@ public class MarchingCubes : MonoBehaviour
     GameObject[,,] blocks;
     Vector3 totalDistance;
     int count;
+
+    Stopwatch timer1 = new Stopwatch();
+    Stopwatch timer2 = new Stopwatch();
+    Stopwatch timer3 = new Stopwatch();
+
+    System.TimeSpan CalculationTime;
+    System.TimeSpan ConstructionTime;
+    System.TimeSpan UpdateTime;
+    int totalUpdates;
+
 
     // the 8 template corners of a basic cube (order important). We can add these to a coordinate to get all 8 corners of a cube at that coordinate.
     Vector3[] BaseCorners = {
@@ -49,6 +61,19 @@ public class MarchingCubes : MonoBehaviour
         new Vector2Int(2, 6),
         new Vector2Int(7, 3)
     };
+
+
+     // avoid values <= 0 for this variable.
+    void OnValidate() {
+        updateInterval = Mathf.Max(updateInterval, 1);
+    }
+
+    
+    void OnDestroy() {
+        Debug.Log("Average Time to Compute Density Function: " + CalculationTime / totalUpdates);
+        Debug.Log("Average Time to Construct Voxel Polygons: " + ConstructionTime / totalUpdates);
+        Debug.Log("Average Time to Update Mesh: " + UpdateTime / totalUpdates);
+    }
 
 
     // Start is called before the first frame update
@@ -86,9 +111,28 @@ public class MarchingCubes : MonoBehaviour
 
                     // calculate the density values and construct the meshes for the block.
                     Vector3Int blockIndex = new Vector3Int(i, j, k);
+
+                    timer1.Start();
                     EvaluateBlock(blockIndex * Dimensions);
+                    timer1.Stop();
+
+                    timer2.Start();
                     MarchBlock();
+                    timer2.Stop();
+
+                    timer3.Start();
                     UpdateMesh(blockIndex);
+                    timer3.Stop();
+
+                    Debug.Log("Timer 1: " + timer1.Elapsed);
+                    Debug.Log("Timer 2: " + timer2.Elapsed);
+                    Debug.Log("Timer 3: " + timer3.Elapsed);
+                    Debug.Log("\n");
+
+                    totalUpdates += 1;
+                    CalculationTime += timer1.Elapsed;
+                    ConstructionTime += timer2.Elapsed;
+                    UpdateTime += timer3.Elapsed;
                 }
             }
         }
@@ -98,7 +142,7 @@ public class MarchingCubes : MonoBehaviour
 
         count++;
 
-        if (count % updateRate == 0) {
+        if (count % updateInterval == 0) {
 
             totalDistance += new Vector3(speed, 0, speed);
 
@@ -115,9 +159,23 @@ public class MarchingCubes : MonoBehaviour
 
                         // calculate the density values and construct the meshes for the block.
                         Vector3Int blockIndex = new Vector3Int(i, j, k);
+
+                        timer1.Restart();
                         EvaluateBlock(blockIndex * Dimensions + totalDistance);
+                        timer1.Stop();
+
+                        timer2.Restart();
                         MarchBlock();
+                        timer2.Stop();
+
+                        timer3.Restart();
                         UpdateMesh(blockIndex);
+                        timer3.Stop();
+
+                        totalUpdates += 1;
+                        CalculationTime += timer1.Elapsed;
+                        ConstructionTime += timer2.Elapsed;
+                        UpdateTime += timer3.Elapsed;
                     }
                 }
             }
@@ -137,15 +195,57 @@ public class MarchingCubes : MonoBehaviour
         return (xy + xz + yz + yx + zx + zy) / 6;
     }
 
+    float ComplexNoise(Vector3 coord) {
+        float offset = 100;
+        Vector3 newBase = coord + Vector3.one * offset;
+        Vector3 inputs;
+        float output = 0;
+
+        inputs = newBase * 0.42f;
+        output += PerlinNoise3D(inputs.x, inputs.z, inputs.y) * 12.6f;
+
+        inputs = newBase * 0.21f;
+        output += PerlinNoise3D(inputs.x, inputs.z, inputs.y) * 35.1f;
+
+        inputs = newBase * 0.11f;
+        output += PerlinNoise3D(inputs.x, inputs.z, inputs.y) * 70.1f;
+
+        inputs = newBase * 0.062f;
+        output += PerlinNoise3D(inputs.x, inputs.z, inputs.y) * 140.21f;
+
+        return output - coord.y;
+    }
+
+
+    // basic 3D sin function with some adjustable parameters.
+    float my_sin(Vector3 coord, float frequency, float amplitude) {
+        return Mathf.Sin(frequency * coord.x) * Mathf.Sin(frequency * coord.z) * amplitude;
+    }
+
+
+    // ripple function.
+    float ripple(Vector3 coord, float frequency, float amplitude) {
+        return Mathf.Sin( (frequency * Mathf.Pow(coord.x, 2)) + (frequency * Mathf.Pow(coord.z, 2)) ) * amplitude;
+    }
+
+
     // This is our simplistic density function.
     // helper visualization tool:
     // http://www.math3d.org/
     float SampleSlope(Vector3 coord) {
 
-        // float output = Mathf.Pow((coord.x - 16) / 4, 2) - Mathf.Pow((coord.z - 16) / 4, 2);
-        float output = Mathf.Sin(0.25f * coord.x) * Mathf.Sin(0.25f * coord.z) * 2;
+        float output;
 
-        return output - coord.y + 16;    //NOTE: subtracting coord.z balances the equation so you can use a 3D graph to check functions first.
+        // basic 3D sin function
+        // output = my_sin(coord, 0.25f, 2);
+
+        // ripple function
+        // output = ripple(coord, 0.05f, 1);
+
+        // a complex noise function
+        output = ComplexNoise(coord) - 110;
+
+        return output - coord.y + 16;    //NOTE: subtracting coord.y balances the equation so you can use a 3D graph to check functions first.
     }
 
 
@@ -172,7 +272,7 @@ public class MarchingCubes : MonoBehaviour
                 for (int k = 0; k < Dimensions + 1; k++) {
 
                     // evaluate and store each corner so we can evaluate the voxel cases later.
-                    terrainMap[i, j, k] = Density(new Vector3(i, j, k) + rootCoord);
+                    terrainMap[i, j, k] = SampleSlope(new Vector3(i, j, k) + rootCoord);
                 }
             }
         }

@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+ using System.Diagnostics;
+ using Debug=UnityEngine.Debug;
 
 [RequireComponent(typeof(MeshFilter))]
 public class MarchingCubesGPU : MonoBehaviour
@@ -8,9 +10,10 @@ public class MarchingCubesGPU : MonoBehaviour
     [SerializeField] Material meshMat;
     [SerializeField] ComputeShader evaluateTerrain;       // the shader used to get the vertex cases.
     [SerializeField] ComputeShader interpretCase;       // interprets the voxel cases and constructs the surface mesh data.
+    [SerializeField] ComputeShader updateVertices;      // sets the mesh vertices.
     [SerializeField] int matrixSize;
     [SerializeField] float speed;
-    [SerializeField] int updateRate = 30;
+    [SerializeField] int updateInterval = 30;
 
     int[][] triangleTable;                                                  // vertex case config lookups. Index is vertex case, output is edge order for mesh drawing.
     int[] triangleTable2;                                                   // triangle table converted to 1 dimensional array (for use in compute shader).
@@ -27,12 +30,23 @@ public class MarchingCubesGPU : MonoBehaviour
     ComputeBuffer triTableBuffer;                                           // Used to pass in triangleTable2 to compute shader.
     Vector3[] vertices;
     int[] triangles;
-    GameObject[,,] blocks;
     Vector3 totalDistance;
-    int count;  // TEMP
+    int count;
 
     public RenderTexture renderTexture;                                     // Will store the vertex cases. Only exposed so we can preview it from the editor.
     Texture3D voxelTexture;                                                 // Will put the vertex cases here afterwards so that we can read the cases.
+
+
+    Stopwatch timer1 = new Stopwatch();
+    Stopwatch timer2 = new Stopwatch();
+    Stopwatch timer3 = new Stopwatch();
+    Stopwatch timer4 = new Stopwatch();
+
+    System.TimeSpan CalculationTime;
+    System.TimeSpan ConstructionTime;
+    System.TimeSpan StreamTime;
+    System.TimeSpan UpdateTime;
+    int totalUpdates;
 
     // Stores an entire mesh triangle (allows us to stream vertices out of the compute shader in the correct order).
     struct Polygon {
@@ -41,8 +55,36 @@ public class MarchingCubesGPU : MonoBehaviour
         public Vector3 c;
     };
 
+
     Polygon[] polygons;
     Polygon[] emptyPolyBuffer;
+
+    
+    struct MeshObject {
+        public GameObject gameObject;
+        public Mesh mesh;
+        public GraphicsBuffer vertexBuffer;
+    };
+    
+    MeshObject[,,] blocks;
+
+    // avoid values <= 0 for this variable.
+    void OnValidate() {
+        updateInterval = Mathf.Max(updateInterval, 1);
+    }
+
+    void OnDestroy() {
+        polygonBuffer.Dispose();
+        triTableBuffer.Dispose();
+        edgeBuffer.Dispose();
+        cornerBuffer.Dispose();
+
+        Debug.Log("Average Time to Compute Density Function: " + CalculationTime / totalUpdates);
+        Debug.Log("Average Time to Construct Voxel Polygons: " + ConstructionTime / totalUpdates);
+        Debug.Log("Average Polygon Stream -> Vert/Tri Arrays: " + StreamTime / totalUpdates);
+        Debug.Log("Average Time to Update Mesh: " + UpdateTime / totalUpdates);
+    }
+
 
     // Start is called before the first frame update
     void Start()
@@ -53,7 +95,7 @@ public class MarchingCubesGPU : MonoBehaviour
         polygons = new Polygon[vertices.Length/3];
         emptyPolyBuffer = new Polygon[vertices.Length/3];
         
-        blocks = new GameObject[matrixSize, matrixSize, matrixSize];
+        blocks = new MeshObject[matrixSize, matrixSize, matrixSize];
 
         totalDistance = Vector3.zero;
 
@@ -61,12 +103,22 @@ public class MarchingCubesGPU : MonoBehaviour
         for (int i = 0; i < matrixSize; i++) {
             for (int j = 0; j < matrixSize; j++) {
                 for (int k = 0; k < matrixSize; k++) {
-                    blocks[i, j, k] = new GameObject();
-                    blocks[i, j, k].transform.position = new Vector3(i, j, k) * Dimensions;
-                    blocks[i, j, k].AddComponent<MeshFilter>();
-                    blocks[i, j, k].AddComponent<MeshRenderer>();
-                    blocks[i, j, k].GetComponent<MeshFilter>().mesh = new Mesh();
-                    blocks[i, j, k].GetComponent<MeshRenderer>().material = meshMat;
+                    GameObject blockGO = new GameObject();
+                    Mesh blockMesh = new Mesh();
+                    // I think I need to initialize blockMesh's vertex buffer here
+
+                    // shader stuff initialization
+                    // blockMesh.vertexBufferTarget |= GraphicsBuffer.Target.Raw;
+
+                    blockGO.transform.position = new Vector3(i, j, k) * Dimensions;
+                    blockGO.AddComponent<MeshFilter>();
+                    blockGO.AddComponent<MeshRenderer>();
+                    blockGO.GetComponent<MeshFilter>().mesh = blockMesh;
+                    blockGO.GetComponent<MeshRenderer>().material = meshMat;
+
+                    blocks[i, j, k].gameObject = blockGO;
+                    blocks[i, j, k].mesh = blockMesh;
+                    // blocks[i, j, k].vertexBuffer = blockMesh.GetVertexBuffer(0);    // vertex buffer
                 }
             }
         }
@@ -81,9 +133,31 @@ public class MarchingCubesGPU : MonoBehaviour
         for (int i = 0; i < matrixSize; i++) {
             for (int j = 0; j < matrixSize; j++) {
                 for (int k = 0; k < matrixSize; k++) {
+
+                    timer1.Restart();
                     EvaluateTerrain(new Vector3(i, j, k) * Dimensions);
+                    timer1.Stop();
+
                     GetMeshData();
+
+                    timer4.Restart();
                     UpdateMesh(new Vector3Int(i, j, k));
+                    timer4.Stop();
+
+                    // GetMeshData2();
+                    // UpdateMeshVertices(new Vector3Int(i, j, k));
+
+                    Debug.Log("Timer 1: " + timer1.Elapsed);
+                    Debug.Log("Timer 2: " + timer2.Elapsed);
+                    Debug.Log("Timer 3: " + timer3.Elapsed);
+                    Debug.Log("Timer 4: " + timer4.Elapsed);
+                    Debug.Log("\n");
+
+                    totalUpdates += 1;
+                    CalculationTime += timer1.Elapsed;
+                    ConstructionTime += timer2.Elapsed;
+                    StreamTime += timer3.Elapsed;
+                    UpdateTime += timer4.Elapsed;
                 }
             }
         }
@@ -93,17 +167,33 @@ public class MarchingCubesGPU : MonoBehaviour
 
         count++;
 
-        if (count % updateRate == 0) {
+        if (count % updateInterval == 0) {
 
-            totalDistance += new Vector3(speed, 0, 0);
+            totalDistance += new Vector3(speed, 0, speed);
 
             // generate terrain block by block
             for (int i = 0; i < matrixSize; i++) {
                 for (int j = 0; j < matrixSize; j++) {
                     for (int k = 0; k < matrixSize; k++) {
+
+                        timer1.Restart();
                         EvaluateTerrain(new Vector3(i, j, k) * Dimensions + totalDistance);
+                        timer1.Stop();
+
                         GetMeshData();
+
+                        timer4.Restart();
                         UpdateMesh(new Vector3Int(i, j, k));
+                        timer4.Stop();
+
+                        // GetMeshData2();
+                        // UpdateMeshVertices(new Vector3Int(i, j, k));
+
+                        totalUpdates += 1;
+                        CalculationTime += timer1.Elapsed;
+                        ConstructionTime += timer2.Elapsed;
+                        StreamTime += timer3.Elapsed;
+                        UpdateTime += timer4.Elapsed;
                     }
                 }
             }
@@ -143,6 +233,9 @@ public class MarchingCubesGPU : MonoBehaviour
         interpretCase.SetBuffer(0, "polygonBuffer", polygonBuffer);
 
         evaluateTerrain.SetTexture(0, "terrainMap", renderTexture);
+
+        // TESTING vertex update stuff
+        updateVertices.SetBuffer(0, "polygonBuffer", polygonBuffer);
     }
 
 
@@ -160,16 +253,22 @@ public class MarchingCubesGPU : MonoBehaviour
     // It also converts the newly created polygon data into a format we can use with Unity's mesh object.
     void GetMeshData() {
 
+        // timer2.Restart();
+        
         // reset polygon buffer for a new run.
         polygonBuffer.SetData(emptyPolyBuffer);
         polygonBuffer.SetCounterValue(0);       // this is ComputeBufferType.Append, meaning its treated like a stack. We must reset the counter as well.
+        timer2.Restart();
 
         // Dispatch shader.
         interpretCase.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);
 
+        timer2.Stop();
+        timer3.Restart();
+
         // retrieve mesh data from buffers after shader has run.
         polygonBuffer.GetData(polygons);
-        
+
         // unpack the polygons into the vertices and triangles arrays.
         for (int i = 0; i < polygons.Length; i++) {
             vertices[3 * i + 0] = polygons[i].a;
@@ -180,16 +279,38 @@ public class MarchingCubesGPU : MonoBehaviour
             triangles[3 * i + 1] = 3 * i + 1;
             triangles[3 * i + 2] = 3 * i + 2;
         }
+        timer3.Stop();
+    }
+
+
+    void GetMeshData2() {
+
+        // reset polygon buffer for a new run.
+        polygonBuffer.SetData(emptyPolyBuffer);
+        polygonBuffer.SetCounterValue(0);       // this is ComputeBufferType.Append, meaning its treated like a stack. We must reset the counter as well.
+
+        // Dispatch shader.
+        interpretCase.Dispatch(0, 64, 1, 1);
+
+    }
+
+
+    void UpdateMeshVertices(Vector3Int blockIndex) {
+
+        // set correct vertex buffer as input
+        updateVertices.SetBuffer(0, "vertexBuffer", blocks[blockIndex.x, blockIndex.y, blockIndex.z].vertexBuffer);
+
+        // dispatch shader.
+        updateVertices.Dispatch(0, Dimensions/8, Dimensions/8, Dimensions/8);
     }
 
 
     // Updates the mesh for this voxel with our 'vertices' and 'triangles' arrays, which will essentially apply our newly generated terrain.
     void UpdateMesh(Vector3Int rootCoord) {
-        Mesh mesh = blocks[rootCoord.x, rootCoord.y, rootCoord.z].GetComponent<MeshFilter>().mesh;
+        Mesh mesh = blocks[rootCoord.x, rootCoord.y, rootCoord.z].mesh;
         mesh.Clear();
         mesh.vertices = vertices;
         mesh.triangles = triangles;
-        // mesh.RecalculateNormals();   // doesnt' work as is
     }
 
 

@@ -3,22 +3,6 @@
 RWTexture2DArray<float> terrainMap;     // output texture storing density function values.
 float3 rootCoord;
 
-// example density function without noise.
-// tool to help visualize (must adjust values in this script):
-// http://www.math3d.org/
-float SampleSlope(float3 coord) {
-    float eq_result;
-    coord = coord + rootCoord;                      // root coord represents the base of this block.
-    coord = float3(coord.z, coord.x, coord.y);      // re-orient the coordinates to correspond to correct ws orientation.
-    
-    // you can make complex functions to represent the terrain like so.
-    eq_result = (sin(0.07 * pow(coord.x, 2) + 0.07 * pow(coord.y, 2)));
-    // eq_result += pow(coord.x / 4, 1.2) + pow(coord.y / 4, 1.2);
-
-    // above functions are calculated with z = xy style functions, this adjusts it to isolate the float result.
-    return eq_result + 16 - coord.z;
-}
-
 
 // < generated from shadergraph node >
 float2 unity_gradientNoise_dir(float2 p)
@@ -63,6 +47,55 @@ float Perlin3D(float3 input, float Scale) {
     float abc = ab + bc + ac + ba + cb + ca;
     return abc / 6.0;
 }
+
+
+// basic 3D sin function with some adjustable parameters.
+    float my_sin(float3 coord, float frequency, float amplitude) {
+        return sin(frequency * coord.x) * sin(frequency * coord.z) * amplitude;
+    }
+
+
+// Ripple function.
+float ripple(float3 coord, float frequency, float amplitude) {
+    return ( sin(frequency * pow(coord.x, 2) + frequency * pow(coord.z, 2)) ) * amplitude;
+}
+
+float complex_noise(float3 coord) {
+    float offset = 100;
+    float3 newBase = coord + float3(offset, offset, offset);
+    float output = 0;
+
+    // output += Perlin3D(newBase, 0.04) * 201.2;
+    output += Perlin3D(newBase, 0.11) * 65.1;
+    output += Perlin3D(newBase, 0.223) * 32.4;
+
+    return output;
+
+}
+
+
+// example density function without noise.
+// tool to help visualize (must adjust values in this script):
+// http://www.math3d.org/
+float SampleSlope(float3 coord) {
+    
+    // root coord represents the base of this block.
+    coord = coord + rootCoord;
+
+    float output;
+
+    // adjustable 3D sin function.
+    // output = my_sin(coord, 0.25, 2);
+    
+    // ripple function.
+    // output = ripple(coord, 0.05, 1);
+
+    // complex noise function.
+    output = complex_noise(coord) - 55;
+
+    return output + 16 - coord.y;
+}
+
 
 // actual density function.
 float Density(float3 coord) {

@@ -1,0 +1,23 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Stores vertex information about a single triangle.
+// If I tried appending 1 vertex at a time, they could get mixed up. This keeps the triangles grouped correctly.
+struct Polygon {
+    float3 a;
+    float3 b;
+    float3 c;
+};
+
+ConsumeStructuredBuffer<Polygon> polygonBuffer;      // vertices for mesh    (output)
+RWStructuredBuffer<float3> vertexBuffer;
+
+[numthreads(64,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Polygon polygon = polygonBuffer.Consume();
+
+    vertexBuffer[3 * id.x + 0] = polygon.a;
+    vertexBuffer[3 * id.x + 1] = polygon.b;
+    vertexBuffer[3 * id.x + 2] = polygon.c;
+}
